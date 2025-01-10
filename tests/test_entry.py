@@ -1,14 +1,14 @@
 import pytest
 
-from bplustree.entry import Record, Reference, OpaqueData, NOT_LOADED
 from bplustree.const import TreeConf
+from bplustree.entry import NOT_LOADED, OpaqueData, Record, Reference
 from bplustree.serializer import IntSerializer, StrSerializer
 
 tree_conf = TreeConf(4096, 4, 16, 16, IntSerializer())
 
 
 def test_record_int_serialization():
-    r1 = Record(tree_conf, 42, b'foo')
+    r1 = Record(tree_conf, 42, b"foo")
     data = r1.dump()
 
     r2 = Record(tree_conf, data=data)
@@ -19,7 +19,7 @@ def test_record_int_serialization():
 
 def test_record_str_serialization():
     tree_conf = TreeConf(4096, 4, 40, 40, StrSerializer())
-    r1 = Record(tree_conf, '0', b'0')
+    r1 = Record(tree_conf, "0", b"0")
     data = r1.dump()
 
     r2 = Record(tree_conf, data=data)
@@ -39,7 +39,7 @@ def test_record_int_serialization_overflow_value():
 
 
 def test_record_repr():
-    r1 = Record(tree_conf, 42, b'foo')
+    r1 = Record(tree_conf, 42, b"foo")
     assert repr(r1) == "<Record: 42 value=b'foo'>"
 
     r1.value = None
@@ -50,13 +50,13 @@ def test_record_repr():
 
 
 def test_record_slots():
-    r1 = Record(tree_conf, 42, b'foo')
+    r1 = Record(tree_conf, 42, b"foo")
     with pytest.raises(AttributeError):
         r1.foo = True
 
 
 def test_record_lazy_load():
-    data = Record(tree_conf, 42, b'foo').dump()
+    data = Record(tree_conf, 42, b"foo").dump()
     r = Record(tree_conf, data=data)
 
     assert r._data == data
@@ -66,7 +66,7 @@ def test_record_lazy_load():
 
     _ = r.key
     assert r._key == 42
-    assert r._value == b'foo'
+    assert r._value == b"foo"
     assert r._overflow_page is None
     assert r._data == data
 
@@ -87,7 +87,7 @@ def test_reference_int_serialization():
 
 def test_reference_str_serialization():
     tree_conf = TreeConf(4096, 4, 40, 40, StrSerializer())
-    r1 = Reference(tree_conf, 'foo', 1, 2)
+    r1 = Reference(tree_conf, "foo", 1, 2)
     data = r1.dump()
 
     r2 = Reference(tree_conf, data=data)
@@ -98,7 +98,7 @@ def test_reference_str_serialization():
 
 def test_reference_repr():
     r1 = Reference(tree_conf, 42, 1, 2)
-    assert repr(r1) == '<Reference: key=42 before=1 after=2>'
+    assert repr(r1) == "<Reference: key=42 before=1 after=2>"
 
 
 def test_reference_lazy_load():
@@ -122,7 +122,7 @@ def test_reference_lazy_load():
 
 
 def test_opaque_data():
-    data = b'foo'
+    data = b"foo"
     o = OpaqueData(data=data)
     assert o.data == data
     assert o.dump() == data
