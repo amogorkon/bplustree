@@ -1,0 +1,33 @@
+import uuid
+from pathlib import Path
+from unittest import mock
+
+import pytest
+
+index_dir = Path(__file__).parent / "tests/tmp"
+index_dir.mkdir(exist_ok=True)
+index_path = index_dir / "bplustree-testfile.index"
+
+
+@pytest.fixture(autouse=True)
+def clean_file():
+    unique_index_path = index_dir / f"bplustree-testfile-{uuid.uuid4()}.index"
+    wal_path = unique_index_path.with_name(f"{unique_index_path.name}-wal")
+
+    yield unique_index_path
+
+    if unique_index_path.is_file():
+        unique_index_path.unlink()
+    if wal_path.is_file():
+        wal_path.unlink()
+
+    for file in index_dir.glob("bplustree-testfile-*.index*"):
+        file.unlink()
+
+
+@pytest.fixture(autouse=True)
+def patch_fsync():
+    mock_fsync = mock.patch("os.fsync")
+    mock_fsync.start()
+    yield
+    mock_fsync.stop()
