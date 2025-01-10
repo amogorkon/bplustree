@@ -10,13 +10,13 @@ filename = r"E:\Dropbox\code\bplustree\tests/tmp/bplustree-testfile.index"
 def clean_file():
     if os.path.isfile(filename):
         os.unlink(filename)
-    if os.path.isfile(filename + "-wal"):
-        os.unlink(filename + "-wal")
+    if os.path.isfile(f"{filename}-wal"):
+        os.unlink(f"{filename}-wal")
     yield
     if os.path.isfile(filename):
         os.unlink(filename)
-    if os.path.isfile(filename + "-wal"):
-        os.unlink(filename + "-wal")
+    if os.path.isfile(f"{filename}-wal"):
+        os.unlink(f"{filename}-wal")
 
 
 @pytest.fixture(autouse=True)

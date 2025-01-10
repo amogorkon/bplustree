@@ -103,7 +103,7 @@ class BPlusTree:
                 pass
             else:
                 if not replace:
-                    raise ValueError("Key {} already exists".format(key))
+                    raise ValueError(f"Key {key} already exists")
 
                 if existing_record.overflow_page:
                     self._delete_overflow(existing_record.overflow_page)
@@ -194,7 +194,7 @@ class BPlusTree:
     def __contains__(self, item):
         with self._mem.read_transaction:
             o = object()
-            return False if self.get(item, default=o) is o else True
+            return self.get(item, default=o) is not o
 
     @beartype
     def __setitem__(self, key, value):
@@ -204,19 +204,16 @@ class BPlusTree:
     def __getitem__(self, item):
         with self._mem.read_transaction:
             if isinstance(item, slice):
-                # Returning a dict is the most sensible thing to do
-                # as a method cannot return a sometimes a generator
-                # and sometimes a normal value
-                rv = dict()
-                for record in self._iter_slice(item):
-                    rv[record.key] = self._get_value_from_record(record)
-                return rv
-
+                rv = {
+                    record.key: self._get_value_from_record(record)
+                    for record in self._iter_slice(item)
+                }
             else:
                 rv = self.get(item)
                 if rv is None:
                     raise KeyError(item)
-                return rv
+
+            return rv
 
     @beartype
     def __len__(self):
@@ -279,7 +276,7 @@ class BPlusTree:
 
     @beartype
     def __repr__(self):
-        return "<BPlusTree: {} {}>".format(self._filename, self._tree_conf)
+        return f"<BPlusTree: {self._filename} {self._tree_conf}>"
 
     # ####################### Implementation ##############################
 
@@ -441,11 +438,7 @@ class BPlusTree:
         for slice_value, is_last in iterator:
             current_overflow_page = next_overflow_page
 
-            if is_last:
-                next_overflow_page = None
-            else:
-                next_overflow_page = self._mem.next_available_page
-
+            next_overflow_page = None if is_last else self._mem.next_available_page
             overflow_node = self.OverflowNode(
                 page=current_overflow_page, next_page=next_overflow_page
             )

@@ -37,7 +37,7 @@ def open_file_in_dir(path: str) -> Tuple[io.FileIO, Optional[int]]:
     """
     directory = os.path.dirname(path)
     if not os.path.isdir(directory):
-        raise ValueError("No directory {}".format(directory))
+        raise ValueError(f"No directory {directory}")
 
     if not os.path.exists(path):
         file_fd = open(path, mode="x+b", buffering=0)
@@ -165,9 +165,7 @@ class FileMemory:
         if node is not None:
             return node
 
-        data = self._wal.get_page(page)
-        if not data:
-            data = self._read_page(page)
+        data = self._wal.get_page(page) or self._read_page(page)
 
         node = Node.from_page_data(self._tree_conf, data=data, page=page)
         self._cache[node.page] = node
@@ -287,10 +285,10 @@ class FileMemory:
     def get_metadata(self) -> tuple:
         try:
             data = self._read_page(0)
-        except ReachedEndOfFile:
-            raise ValueError("Metadata not set yet")
+        except ReachedEndOfFile as e:
+            raise ValueError("Metadata not set yet") from e
         end_root_node_page = PAGE_REFERENCE_BYTES
-        root_node_page = int.from_bytes(data[0:end_root_node_page], ENDIAN)
+        root_node_page = int.from_bytes(data[:end_root_node_page], ENDIAN)
         end_page_size = end_root_node_page + OTHERS_BYTES
         page_size = int.from_bytes(data[end_root_node_page:end_page_size], ENDIAN)
         end_order = end_page_size + OTHERS_BYTES
@@ -371,7 +369,7 @@ class FileMemory:
 
     @beartype
     def __repr__(self):
-        return "<FileMemory: {}>".format(self._filename)
+        return f"<FileMemory: {self._filename}>"
 
 
 class FrameType(enum.Enum):
@@ -395,11 +393,11 @@ class WAL:
 
     @beartype
     def __init__(self, filename: str, page_size: int):
-        self.filename = filename + "-wal"
+        self.filename = f"{filename}-wal"
         self._fd, self._dir_fd = open_file_in_dir(self.filename)
         self._page_size = page_size
-        self._committed_pages = dict()
-        self._not_committed_pages = dict()
+        self._committed_pages = {}
+        self._not_committed_pages = {}
 
         self._fd.seek(0, io.SEEK_END)
         if self._fd.tell() == 0:
@@ -451,7 +449,7 @@ class WAL:
                 break
         if self._not_committed_pages:
             logger.warning("WAL has uncommitted data, discarding it")
-            self._not_committed_pages = dict()
+            self._not_committed_pages = {}
 
     @beartype
     def _load_next_frame(self):
@@ -459,7 +457,7 @@ class WAL:
         stop = start + self.FRAME_HEADER_LENGTH
         data = read_from_file(self._fd, start, stop)
 
-        frame_type = int.from_bytes(data[0:FRAME_TYPE_BYTES], ENDIAN)
+        frame_type = int.from_bytes(data[:FRAME_TYPE_BYTES], ENDIAN)
         page = int.from_bytes(
             data[FRAME_TYPE_BYTES : FRAME_TYPE_BYTES + PAGE_REFERENCE_BYTES], ENDIAN
         )
@@ -476,9 +474,9 @@ class WAL:
             self._not_committed_pages[page] = page_start
         elif frame_type is FrameType.COMMIT:
             self._committed_pages.update(self._not_committed_pages)
-            self._not_committed_pages = dict()
+            self._not_committed_pages = {}
         elif frame_type is FrameType.ROLLBACK:
-            self._not_committed_pages = dict()
+            self._not_committed_pages = {}
         else:
             assert False
 
@@ -537,4 +535,4 @@ class WAL:
 
     @beartype
     def __repr__(self):
-        return "<WAL: {}>".format(self.filename)
+        return f"<WAL: {self.filename}>"
