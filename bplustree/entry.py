@@ -1,8 +1,12 @@
 import abc
-from typing import Optional
 
-from .const import (ENDIAN, PAGE_REFERENCE_BYTES,
-                    USED_KEY_LENGTH_BYTES, USED_VALUE_LENGTH_BYTES, TreeConf)
+from .const import (
+    ENDIAN,
+    PAGE_REFERENCE_BYTES,
+    USED_KEY_LENGTH_BYTES,
+    USED_VALUE_LENGTH_BYTES,
+    TreeConf,
+)
 
 
 # Sentinel value indicating that a lazy loaded attribute is not yet loaded
@@ -10,7 +14,6 @@ NOT_LOADED = object()
 
 
 class Entry(metaclass=abc.ABCMeta):
-
     __slots__ = []
 
     @abc.abstractmethod
@@ -46,17 +49,23 @@ class ComparableEntry(Entry, metaclass=abc.ABCMeta):
 class Record(ComparableEntry):
     """A container for the actual data the tree stores."""
 
-    __slots__ = ['_tree_conf', 'length', '_key', '_value', '_overflow_page',
-                 '_data']
+    __slots__ = ["_tree_conf", "length", "_key", "_value", "_overflow_page", "_data"]
 
-    def __init__(self, tree_conf: TreeConf, key=None,
-                 value: Optional[bytes]=None, data: Optional[bytes]=None,
-                 overflow_page: Optional[int]=None):
+    def __init__(
+        self,
+        tree_conf: TreeConf,
+        key=None,
+        value: bytes | None = None,
+        data: bytes | None = None,
+        overflow_page: int | None = None,
+    ):
         self._tree_conf = tree_conf
         self.length = (
-            USED_KEY_LENGTH_BYTES + self._tree_conf.key_size +
-            USED_VALUE_LENGTH_BYTES + self._tree_conf.value_size +
-            PAGE_REFERENCE_BYTES
+            USED_KEY_LENGTH_BYTES
+            + self._tree_conf.key_size
+            + USED_VALUE_LENGTH_BYTES
+            + self._tree_conf.value_size
+            + PAGE_REFERENCE_BYTES
         )
         self._data = data
 
@@ -114,12 +123,8 @@ class Record(ComparableEntry):
             data[end_used_key_length:end_key]
         )
 
-        start_used_value_length = (
-            end_used_key_length + self._tree_conf.key_size
-        )
-        end_used_value_length = (
-            start_used_value_length + USED_VALUE_LENGTH_BYTES
-        )
+        start_used_value_length = end_used_key_length + self._tree_conf.key_size
+        end_used_value_length = start_used_value_length + USED_VALUE_LENGTH_BYTES
         used_value_length = int.from_bytes(
             data[start_used_value_length:end_used_value_length], ENDIAN
         )
@@ -129,9 +134,7 @@ class Record(ComparableEntry):
 
         start_overflow = end_used_value_length + self._tree_conf.value_size
         end_overflow = start_overflow + PAGE_REFERENCE_BYTES
-        overflow_page = int.from_bytes(
-            data[start_overflow:end_overflow], ENDIAN
-        )
+        overflow_page = int.from_bytes(data[start_overflow:end_overflow], ENDIAN)
 
         if overflow_page:
             self._overflow_page = overflow_page
@@ -141,7 +144,6 @@ class Record(ComparableEntry):
             self._value = data[end_used_value_length:end_value]
 
     def dump(self) -> bytes:
-
         if self._data:
             return self._data
 
@@ -152,44 +154,41 @@ class Record(ComparableEntry):
         used_key_length = len(key_as_bytes)
         overflow_page = self._overflow_page or 0
         if overflow_page:
-            value = b''
+            value = b""
         else:
             value = self._value
         used_value_length = len(value)
 
         data = (
-            used_key_length.to_bytes(USED_VALUE_LENGTH_BYTES, ENDIAN) +
-            key_as_bytes +
-            bytes(self._tree_conf.key_size - used_key_length) +
-            used_value_length.to_bytes(USED_VALUE_LENGTH_BYTES, ENDIAN) +
-            value +
-            bytes(self._tree_conf.value_size - used_value_length) +
-            overflow_page.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN)
+            used_key_length.to_bytes(USED_VALUE_LENGTH_BYTES, ENDIAN)
+            + key_as_bytes
+            + bytes(self._tree_conf.key_size - used_key_length)
+            + used_value_length.to_bytes(USED_VALUE_LENGTH_BYTES, ENDIAN)
+            + value
+            + bytes(self._tree_conf.value_size - used_value_length)
+            + overflow_page.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN)
         )
         return data
 
     def __repr__(self):
         if self.overflow_page:
-            return '<Record: {} overflowing value>'.format(self.key)
+            return "<Record: {} overflowing value>".format(self.key)
         if self.value:
-            return '<Record: {} value={}>'.format(
-                self.key, self.value[0:16]
-            )
-        return '<Record: {} unknown value>'.format(self.key)
+            return "<Record: {} value={}>".format(self.key, self.value[0:16])
+        return "<Record: {} unknown value>".format(self.key)
 
 
 class Reference(ComparableEntry):
     """A container for a reference to other nodes."""
 
-    __slots__ = ['_tree_conf', 'length', '_key', '_before', '_after', '_data']
+    __slots__ = ["_tree_conf", "length", "_key", "_before", "_after", "_data"]
 
-    def __init__(self, tree_conf: TreeConf, key=None, before=None, after=None,
-                 data: bytes=None):
+    def __init__(
+        self, tree_conf: TreeConf, key=None, before=None, after=None, data: bytes = None
+    ):
         self._tree_conf = tree_conf
         self.length = (
-            2 * PAGE_REFERENCE_BYTES +
-            USED_KEY_LENGTH_BYTES +
-            self._tree_conf.key_size
+            2 * PAGE_REFERENCE_BYTES + USED_KEY_LENGTH_BYTES + self._tree_conf.key_size
         )
         self._data = data
 
@@ -241,9 +240,7 @@ class Reference(ComparableEntry):
         self._before = int.from_bytes(data[0:end_before], ENDIAN)
 
         end_used_key_length = end_before + USED_KEY_LENGTH_BYTES
-        used_key_length = int.from_bytes(
-            data[end_before:end_used_key_length], ENDIAN
-        )
+        used_key_length = int.from_bytes(data[end_before:end_used_key_length], ENDIAN)
         assert 0 <= used_key_length <= self._tree_conf.key_size
 
         end_key = end_used_key_length + used_key_length
@@ -256,7 +253,6 @@ class Reference(ComparableEntry):
         self._after = int.from_bytes(data[start_after:end_after], ENDIAN)
 
     def dump(self) -> bytes:
-
         if self._data:
             return self._data
 
@@ -269,16 +265,16 @@ class Reference(ComparableEntry):
         used_key_length = len(key_as_bytes)
 
         data = (
-            self._before.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN) +
-            used_key_length.to_bytes(USED_VALUE_LENGTH_BYTES, ENDIAN) +
-            key_as_bytes +
-            bytes(self._tree_conf.key_size - used_key_length) +
-            self._after.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN)
+            self._before.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN)
+            + used_key_length.to_bytes(USED_VALUE_LENGTH_BYTES, ENDIAN)
+            + key_as_bytes
+            + bytes(self._tree_conf.key_size - used_key_length)
+            + self._after.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN)
         )
         return data
 
     def __repr__(self):
-        return '<Reference: key={} before={} after={}>'.format(
+        return "<Reference: key={} before={} after={}>".format(
             self.key, self.before, self.after
         )
 
@@ -286,9 +282,9 @@ class Reference(ComparableEntry):
 class OpaqueData(Entry):
     """Entry holding opaque data."""
 
-    __slots__ = ['data']
+    __slots__ = ["data"]
 
-    def __init__(self, tree_conf: TreeConf=None, data: bytes=None):
+    def __init__(self, tree_conf: TreeConf = None, data: bytes = None):
         self.data = data
 
     def load(self, data: bytes):
@@ -298,4 +294,4 @@ class OpaqueData(Entry):
         return self.data
 
     def __repr__(self):
-        return '<OpaqueData: {}>'.format(self.data)
+        return "<OpaqueData: {}>".format(self.data)

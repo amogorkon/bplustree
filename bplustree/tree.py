@@ -1,6 +1,6 @@
 from functools import partial
 from logging import getLogger
-from typing import Optional, Union, Iterator, Iterable
+from collections.abc import Iterator, Iterable
 from beartype import beartype
 
 from . import utils
@@ -41,7 +41,7 @@ class BPlusTree:
         key_size: int = 8,
         value_size: int = 32,
         cache_size: int = 64,
-        serializer: Optional[Serializer] = None,
+        serializer: Serializer | None = None,
     ):
         self._filename = filename
         self._tree_conf = TreeConf(
@@ -242,7 +242,7 @@ class BPlusTree:
             return num_leaf_nodes * num_records_per_leaf_node
 
     @beartype
-    def __iter__(self, slice_: Optional[slice] = None):
+    def __iter__(self, slice_: slice | None = None):
         if not slice_:
             slice_ = slice(None)
         with self._mem.read_transaction:
@@ -252,7 +252,7 @@ class BPlusTree:
     keys = __iter__
 
     @beartype
-    def items(self, slice_: Optional[slice] = None) -> Iterator[tuple]:
+    def items(self, slice_: slice | None = None) -> Iterator[tuple]:
         if not slice_:
             slice_ = slice(None)
         with self._mem.read_transaction:
@@ -260,7 +260,7 @@ class BPlusTree:
                 yield record.key, self._get_value_from_record(record)
 
     @beartype
-    def values(self, slice_: Optional[slice] = None) -> Iterator[bytes]:
+    def values(self, slice_: slice | None = None) -> Iterator[bytes]:
         if not slice_:
             slice_ = slice(None)
         with self._mem.read_transaction:
@@ -299,14 +299,14 @@ class BPlusTree:
 
     @property
     @beartype
-    def _root_node(self) -> Union["LonelyRootNode", "RootNode"]:
+    def _root_node(self) -> LonelyRootNode | RootNode:
         root_node = self._mem.get_node(self._root_node_page)
         assert isinstance(root_node, (LonelyRootNode, RootNode))
         return root_node
 
     @property
     @beartype
-    def _left_record_node(self) -> Union["LonelyRootNode", "LeafNode"]:
+    def _left_record_node(self) -> LonelyRootNode | LeafNode:
         node = self._root_node
         while not isinstance(node, (LonelyRootNode, LeafNode)):
             node = self._mem.get_node(node.smallest_entry.before)
@@ -345,7 +345,7 @@ class BPlusTree:
                 return
 
     @beartype
-    def _search_in_tree(self, key, node) -> "Node":
+    def _search_in_tree(self, key, node) -> Node:
         if isinstance(node, (LonelyRootNode, LeafNode)):
             return node
 

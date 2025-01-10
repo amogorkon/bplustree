@@ -100,7 +100,7 @@ def test_getitem_tree(b):
         _ = b[4]
 
     assert b[1:3] == {1: b"foo", 2: b"bar"}
-    assert b[0:10] == {1: b"foo", 2: b"bar", 5: b"baz"}
+    assert b[:10] == {1: b"foo", 2: b"bar", 5: b"baz"}
 
 
 @beartype
@@ -248,7 +248,7 @@ def test_left_record_node_in_tree():
 
 
 iterators = [
-    range(0, 1000, 1),
+    range(1000),
     range(1000, 0, -1),
     list(range(0, 1000, 2)) + list(range(1, 1000, 2)),
 ]
@@ -275,7 +275,7 @@ matrix = itertools.product(
 def test_insert_split_in_tree(
     iterator, order, page_size, k_size, v_size, serialize_class, cache_size
 ):
-    inserted = list()
+    inserted = []
     for i in iterator:
         v = str(i).encode()
         k = i

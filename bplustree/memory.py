@@ -3,11 +3,10 @@ import io
 from logging import getLogger
 import os
 import platform
-from typing import Union, Tuple, Optional
+from beartype import beartype
 
 import cachetools
 import rwlock
-from beartype import beartype
 
 from .node import Node, FreelistNode
 from .const import (
@@ -26,7 +25,7 @@ class ReachedEndOfFile(Exception):
 
 
 @beartype
-def open_file_in_dir(path: str) -> Tuple[io.FileIO, Optional[int]]:
+def open_file_in_dir(path: str) -> tuple[io.FileIO, int | None]:
     """Open a file and its directory.
 
     The file is opened in binary mode and created if it does not exist.
@@ -57,7 +56,7 @@ def open_file_in_dir(path: str) -> Tuple[io.FileIO, Optional[int]]:
 
 @beartype
 def write_to_file(
-    file_fd: io.FileIO, dir_fileno: Optional[int], data: bytes, fsync: bool = True
+    file_fd: io.FileIO, dir_fileno: int | None, data: bytes, fsync: bool = True
 ):
     length_to_write = len(data)
     written = 0
@@ -68,7 +67,7 @@ def write_to_file(
 
 
 @beartype
-def fsync_file_and_dir(file_fileno: int, dir_fileno: Optional[int]):
+def fsync_file_and_dir(file_fileno: int, dir_fileno: int | None):
     os.fsync(file_fileno)
     if dir_fileno is not None:
         os.fsync(dir_fileno)
@@ -233,7 +232,7 @@ class FileMemory:
     @beartype
     def _traverse_free_list(
         self,
-    ) -> Tuple[Optional[FreelistNode], Optional[FreelistNode]]:
+    ) -> tuple[FreelistNode | None, FreelistNode | None]:
         if self._freelist_start_page == 0:
             return None, None
 
@@ -262,7 +261,7 @@ class FileMemory:
             self.set_node(last_node)
 
     @beartype
-    def _pop_from_freelist(self) -> Optional[int]:
+    def _pop_from_freelist(self) -> int | None:
         """Remove the last page from the freelist and return its page."""
         second_to_last_node, last_node = self._traverse_free_list()
 
@@ -308,9 +307,7 @@ class FileMemory:
         return root_node_page, self._tree_conf
 
     @beartype
-    def set_metadata(
-        self, root_node_page: Optional[int], tree_conf: Optional[TreeConf]
-    ):
+    def set_metadata(self, root_node_page: int | None, tree_conf: TreeConf | None):
         if root_node_page is None:
             root_node_page = self._root_node_page
 
@@ -357,7 +354,7 @@ class FileMemory:
 
     @beartype
     def _write_page_in_tree(
-        self, page: int, data: Union[bytes, bytearray], fsync: bool = True
+        self, page: int, data: bytes | bytearray, fsync: bool = True
     ):
         """Write a page of data in the tree file itself.
 
@@ -484,8 +481,8 @@ class WAL:
     def _add_frame(
         self,
         frame_type: FrameType,
-        page: Optional[int] = None,
-        page_data: Optional[bytes] = None,
+        page: int | None = None,
+        page_data: bytes | None = None,
     ):
         if frame_type is FrameType.PAGE and (not page or not page_data):
             raise ValueError("PAGE frame without page data")
@@ -505,7 +502,7 @@ class WAL:
         self._index_frame(frame_type, page, self._fd.tell() - self._page_size)
 
     @beartype
-    def get_page(self, page: int) -> Optional[bytes]:
+    def get_page(self, page: int) -> bytes | None:
         page_start = None
         for store in (self._not_committed_pages, self._committed_pages):
             page_start = store.get(page)

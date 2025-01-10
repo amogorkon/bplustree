@@ -1,17 +1,17 @@
 import abc
 import bisect
 import math
-from typing import Optional
+
 from beartype import beartype
 
 from .const import (
     ENDIAN,
     NODE_TYPE_BYTES,
-    USED_PAGE_LENGTH_BYTES,
     PAGE_REFERENCE_BYTES,
+    USED_PAGE_LENGTH_BYTES,
     TreeConf,
 )
-from .entry import Entry, Record, Reference, OpaqueData
+from .entry import Entry, OpaqueData, Record, Reference
 
 
 class Node(metaclass=abc.ABCMeta):
@@ -27,13 +27,13 @@ class Node(metaclass=abc.ABCMeta):
     def __init__(
         self,
         tree_conf: TreeConf,
-        data: Optional[bytes] = None,
+        data: bytes | None = None,
         page: int = None,
         parent: "Node" = None,
         next_page: int = None,
     ):
         self._tree_conf = tree_conf
-        self.entries = list()
+        self.entries = []
         self.page = page
         self.parent = parent
         self.next_page = next_page
@@ -173,7 +173,7 @@ class Node(metaclass=abc.ABCMeta):
         i = bisect.bisect_left(self.entries, entry)
         if i != len(self.entries) and self.entries[i] == entry:
             return i
-        raise ValueError("No entry for key {}".format(key))
+        raise ValueError(f"No entry for key {key}")
 
     @beartype
     def split_entries(self) -> list:
@@ -192,7 +192,7 @@ class Node(metaclass=abc.ABCMeta):
     def from_page_data(
         cls, tree_conf: TreeConf, data: bytes, page: int = None
     ) -> "Node":
-        node_type_byte = data[0:NODE_TYPE_BYTES]
+        node_type_byte = data[:NODE_TYPE_BYTES]
         node_type_int = int.from_bytes(node_type_byte, ENDIAN)
         if node_type_int == 1:
             return LonelyRootNode(tree_conf, data, page)
@@ -207,12 +207,12 @@ class Node(metaclass=abc.ABCMeta):
         elif node_type_int == 6:
             return FreelistNode(tree_conf, data, page)
         else:
-            assert False, "No Node with type {} exists".format(node_type_int)
+            assert False, f"No Node with type {node_type_int} exists"
 
     @beartype
     def __repr__(self):
-        return "<{}: page={} entries={}>".format(
-            self.__class__.__name__, self.page, len(self.entries)
+        return (
+            f"<{self.__class__.__name__}: page={self.page} entries={len(self.entries)}>"
         )
 
     @beartype
@@ -231,7 +231,7 @@ class RecordNode(Node):
     def __init__(
         self,
         tree_conf: TreeConf,
-        data: Optional[bytes] = None,
+        data: bytes | None = None,
         page: int = None,
         parent: "Node" = None,
         next_page: int = None,
@@ -252,7 +252,7 @@ class LonelyRootNode(RecordNode):
     def __init__(
         self,
         tree_conf: TreeConf,
-        data: Optional[bytes] = None,
+        data: bytes | None = None,
         page: int = None,
         parent: "Node" = None,
     ):
@@ -277,7 +277,7 @@ class LeafNode(RecordNode):
     def __init__(
         self,
         tree_conf: TreeConf,
-        data: Optional[bytes] = None,
+        data: bytes | None = None,
         page: int = None,
         parent: "Node" = None,
         next_page: int = None,
@@ -295,7 +295,7 @@ class ReferenceNode(Node):
     def __init__(
         self,
         tree_conf: TreeConf,
-        data: Optional[bytes] = None,
+        data: bytes | None = None,
         page: int = None,
         parent: "Node" = None,
     ):
@@ -335,7 +335,7 @@ class RootNode(ReferenceNode):
     def __init__(
         self,
         tree_conf: TreeConf,
-        data: Optional[bytes] = None,
+        data: bytes | None = None,
         page: int = None,
         parent: "Node" = None,
     ):
@@ -360,7 +360,7 @@ class InternalNode(ReferenceNode):
     def __init__(
         self,
         tree_conf: TreeConf,
-        data: Optional[bytes] = None,
+        data: bytes | None = None,
         page: int = None,
         parent: "Node" = None,
     ):
@@ -377,7 +377,7 @@ class OverflowNode(Node):
     def __init__(
         self,
         tree_conf: TreeConf,
-        data: Optional[bytes] = None,
+        data: bytes | None = None,
         page: int = None,
         next_page: int = None,
     ):
@@ -389,8 +389,8 @@ class OverflowNode(Node):
 
     @beartype
     def __repr__(self):
-        return "<{}: page={} next_page={}>".format(
-            self.__class__.__name__, self.page, self.next_page
+        return (
+            f"<{self.__class__.__name__}: page={self.page} next_page={self.next_page}>"
         )
 
 
@@ -401,7 +401,7 @@ class FreelistNode(Node):
     def __init__(
         self,
         tree_conf: TreeConf,
-        data: Optional[bytes] = None,
+        data: bytes | None = None,
         page: int = None,
         next_page: int = None,
     ):
@@ -412,6 +412,6 @@ class FreelistNode(Node):
 
     @beartype
     def __repr__(self):
-        return "<{}: page={} next_page={}>".format(
-            self.__class__.__name__, self.page, self.next_page
+        return (
+            f"<{self.__class__.__name__}: page={self.page} next_page={self.next_page}>"
         )

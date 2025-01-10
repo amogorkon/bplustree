@@ -21,10 +21,7 @@ def iter_slice(iterable: bytes, n: int):
     stop = start + n
     final_offset = len(iterable)
 
-    while True:
-        if start >= final_offset:
-            break
-
+    while start < final_offset:
         rv = iterable[start:stop]
         start = stop
         stop = start + n
