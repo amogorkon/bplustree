@@ -7,10 +7,15 @@ from typing import Union, Tuple, Optional
 
 import cachetools
 import rwlock
+from beartype import beartype
 
 from .node import Node, FreelistNode
 from .const import (
-    ENDIAN, PAGE_REFERENCE_BYTES, OTHERS_BYTES, TreeConf, FRAME_TYPE_BYTES
+    ENDIAN,
+    PAGE_REFERENCE_BYTES,
+    OTHERS_BYTES,
+    TreeConf,
+    FRAME_TYPE_BYTES,
 )
 
 logger = getLogger(__name__)
@@ -20,6 +25,7 @@ class ReachedEndOfFile(Exception):
     """Read a file until its end."""
 
 
+@beartype
 def open_file_in_dir(path: str) -> Tuple[io.FileIO, Optional[int]]:
     """Open a file and its directory.
 
@@ -31,14 +37,14 @@ def open_file_in_dir(path: str) -> Tuple[io.FileIO, Optional[int]]:
     """
     directory = os.path.dirname(path)
     if not os.path.isdir(directory):
-        raise ValueError('No directory {}'.format(directory))
+        raise ValueError("No directory {}".format(directory))
 
     if not os.path.exists(path):
-        file_fd = open(path, mode='x+b', buffering=0)
+        file_fd = open(path, mode="x+b", buffering=0)
     else:
-        file_fd = open(path, mode='r+b', buffering=0)
+        file_fd = open(path, mode="r+b", buffering=0)
 
-    if platform.system() == 'Windows':
+    if platform.system() == "Windows":
         # Opening a directory is not possible on Windows, but that is not
         # a problem since Windows does not need to fsync the directory in
         # order to persist metadata
@@ -49,8 +55,10 @@ def open_file_in_dir(path: str) -> Tuple[io.FileIO, Optional[int]]:
     return file_fd, dir_fd
 
 
-def write_to_file(file_fd: io.FileIO, dir_fileno: Optional[int],
-                  data: bytes, fsync: bool=True):
+@beartype
+def write_to_file(
+    file_fd: io.FileIO, dir_fileno: Optional[int], data: bytes, fsync: bool = True
+):
     length_to_write = len(data)
     written = 0
     while written < length_to_write:
@@ -59,12 +67,14 @@ def write_to_file(file_fd: io.FileIO, dir_fileno: Optional[int],
         fsync_file_and_dir(file_fd.fileno(), dir_fileno)
 
 
+@beartype
 def fsync_file_and_dir(file_fileno: int, dir_fileno: Optional[int]):
     os.fsync(file_fileno)
     if dir_fileno is not None:
         os.fsync(dir_fileno)
 
 
+@beartype
 def read_from_file(file_fd: io.FileIO, start: int, stop: int) -> bytes:
     length = stop - start
     assert length >= 0
@@ -72,8 +82,8 @@ def read_from_file(file_fd: io.FileIO, start: int, stop: int) -> bytes:
     data = bytes()
     while file_fd.tell() < stop:
         read_data = file_fd.read(stop - file_fd.tell())
-        if read_data == b'':
-            raise ReachedEndOfFile('Read until the end of file')
+        if read_data == b"":
+            raise ReachedEndOfFile("Read until the end of file")
         data += read_data
     assert len(data) == length
     return data
@@ -85,24 +95,35 @@ class FakeCache:
     Because cachetools does not work with maxsize=0.
     """
 
+    @beartype
     def get(self, k):
         pass
 
+    @beartype
     def __setitem__(self, key, value):
         pass
 
+    @beartype
     def clear(self):
         pass
 
 
 class FileMemory:
+    __slots__ = [
+        "_filename",
+        "_tree_conf",
+        "_lock",
+        "_cache",
+        "_fd",
+        "_dir_fd",
+        "_wal",
+        "last_page",
+        "_freelist_start_page",
+        "_root_node_page",
+    ]
 
-    __slots__ = ['_filename', '_tree_conf', '_lock', '_cache', '_fd',
-                 '_dir_fd', '_wal', 'last_page', '_freelist_start_page',
-                 '_root_node_page']
-
-    def __init__(self, filename: str, tree_conf: TreeConf,
-                 cache_size: int=512):
+    @beartype
+    def __init__(self, filename: str, tree_conf: TreeConf, cache_size: int = 512):
         self._filename = filename
         self._tree_conf = tree_conf
         self._lock = rwlock.RWLock()
@@ -127,6 +148,7 @@ class FileMemory:
         # Todo: Remove this, it should only be in Tree
         self._root_node_page = 0
 
+    @beartype
     def get_node(self, page: int):
         """Get a node from storage.
 
@@ -151,37 +173,42 @@ class FileMemory:
         self._cache[node.page] = node
         return node
 
+    @beartype
     def set_node(self, node: Node):
         self._wal.set_page(node.page, node.dump())
         self._cache[node.page] = node
 
+    @beartype
     def del_node(self, node: Node):
         self._insert_in_freelist(node.page)
 
+    @beartype
     def del_page(self, page: int):
         self._insert_in_freelist(page)
 
     @property
+    @beartype
     def read_transaction(self):
-
         class ReadTransaction:
-
+            @beartype
             def __enter__(self2):
                 self._lock.reader_lock.acquire()
 
+            @beartype
             def __exit__(self2, exc_type, exc_val, exc_tb):
                 self._lock.reader_lock.release()
 
         return ReadTransaction()
 
     @property
+    @beartype
     def write_transaction(self):
-
         class WriteTransaction:
-
+            @beartype
             def __enter__(self2):
                 self._lock.writer_lock.acquire()
 
+            @beartype
             def __exit__(self2, exc_type, exc_val, exc_tb):
                 if exc_type:
                     # When an error happens in the middle of a write
@@ -196,6 +223,7 @@ class FileMemory:
         return WriteTransaction()
 
     @property
+    @beartype
     def next_available_page(self) -> int:
         last_freelist_page = self._pop_from_freelist()
         if last_freelist_page is not None:
@@ -204,8 +232,10 @@ class FileMemory:
         self.last_page += 1
         return self.last_page
 
-    def _traverse_free_list(self) -> Tuple[Optional[FreelistNode],
-                                           Optional[FreelistNode]]:
+    @beartype
+    def _traverse_free_list(
+        self,
+    ) -> Tuple[Optional[FreelistNode], Optional[FreelistNode]]:
         if self._freelist_start_page == 0:
             return None, None
 
@@ -218,6 +248,7 @@ class FileMemory:
 
         return second_to_last_node, last_node
 
+    @beartype
     def _insert_in_freelist(self, page: int):
         """Insert a page at the end of the freelist."""
         _, last_node = self._traverse_free_list()
@@ -232,6 +263,7 @@ class FileMemory:
             last_node.next_page = page
             self.set_node(last_node)
 
+    @beartype
     def _pop_from_freelist(self) -> Optional[int]:
         """Remove the last page from the freelist and return its page."""
         second_to_last_node, last_node = self._traverse_free_list()
@@ -251,31 +283,22 @@ class FileMemory:
         return last_node.page
 
     # Todo: make metadata as a normal Node
+    @beartype
     def get_metadata(self) -> tuple:
         try:
             data = self._read_page(0)
         except ReachedEndOfFile:
-            raise ValueError('Metadata not set yet')
+            raise ValueError("Metadata not set yet")
         end_root_node_page = PAGE_REFERENCE_BYTES
-        root_node_page = int.from_bytes(
-            data[0:end_root_node_page], ENDIAN
-        )
+        root_node_page = int.from_bytes(data[0:end_root_node_page], ENDIAN)
         end_page_size = end_root_node_page + OTHERS_BYTES
-        page_size = int.from_bytes(
-            data[end_root_node_page:end_page_size], ENDIAN
-        )
+        page_size = int.from_bytes(data[end_root_node_page:end_page_size], ENDIAN)
         end_order = end_page_size + OTHERS_BYTES
-        order = int.from_bytes(
-            data[end_page_size:end_order], ENDIAN
-        )
+        order = int.from_bytes(data[end_page_size:end_order], ENDIAN)
         end_key_size = end_order + OTHERS_BYTES
-        key_size = int.from_bytes(
-            data[end_order:end_key_size], ENDIAN
-        )
+        key_size = int.from_bytes(data[end_order:end_key_size], ENDIAN)
         end_value_size = end_key_size + OTHERS_BYTES
-        value_size = int.from_bytes(
-            data[end_key_size:end_value_size], ENDIAN
-        )
+        value_size = int.from_bytes(data[end_key_size:end_value_size], ENDIAN)
         end_freelist_start_page = end_value_size + PAGE_REFERENCE_BYTES
         self._freelist_start_page = int.from_bytes(
             data[end_value_size:end_freelist_start_page], ENDIAN
@@ -286,9 +309,10 @@ class FileMemory:
         self._root_node_page = root_node_page
         return root_node_page, self._tree_conf
 
-    def set_metadata(self, root_node_page: Optional[int],
-                     tree_conf: Optional[TreeConf]):
-
+    @beartype
+    def set_metadata(
+        self, root_node_page: Optional[int], tree_conf: Optional[TreeConf]
+    ):
         if root_node_page is None:
             root_node_page = self._root_node_page
 
@@ -297,41 +321,46 @@ class FileMemory:
 
         length = 2 * PAGE_REFERENCE_BYTES + 4 * OTHERS_BYTES
         data = (
-            root_node_page.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN) +
-            tree_conf.page_size.to_bytes(OTHERS_BYTES, ENDIAN) +
-            tree_conf.order.to_bytes(OTHERS_BYTES, ENDIAN) +
-            tree_conf.key_size.to_bytes(OTHERS_BYTES, ENDIAN) +
-            tree_conf.value_size.to_bytes(OTHERS_BYTES, ENDIAN) +
-            self._freelist_start_page.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN) +
-            bytes(tree_conf.page_size - length)
+            root_node_page.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN)
+            + tree_conf.page_size.to_bytes(OTHERS_BYTES, ENDIAN)
+            + tree_conf.order.to_bytes(OTHERS_BYTES, ENDIAN)
+            + tree_conf.key_size.to_bytes(OTHERS_BYTES, ENDIAN)
+            + tree_conf.value_size.to_bytes(OTHERS_BYTES, ENDIAN)
+            + self._freelist_start_page.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN)
+            + bytes(tree_conf.page_size - length)
         )
         self._write_page_in_tree(0, data, fsync=True)
 
         self._tree_conf = tree_conf
         self._root_node_page = root_node_page
 
+    @beartype
     def close(self):
         self.perform_checkpoint()
         self._fd.close()
         if self._dir_fd is not None:
             os.close(self._dir_fd)
 
+    @beartype
     def perform_checkpoint(self, reopen_wal=False):
-        logger.info('Performing checkpoint of %s', self._filename)
+        logger.info("Performing checkpoint of %s", self._filename)
         for page, page_data in self._wal.checkpoint():
             self._write_page_in_tree(page, page_data, fsync=False)
         fsync_file_and_dir(self._fd.fileno(), self._dir_fd)
         if reopen_wal:
             self._wal = WAL(self._filename, self._tree_conf.page_size)
 
+    @beartype
     def _read_page(self, page: int) -> bytes:
         start = page * self._tree_conf.page_size
         stop = start + self._tree_conf.page_size
         assert stop - start == self._tree_conf.page_size
         return read_from_file(self._fd, start, stop)
 
-    def _write_page_in_tree(self, page: int, data: Union[bytes, bytearray],
-                            fsync: bool=True):
+    @beartype
+    def _write_page_in_tree(
+        self, page: int, data: Union[bytes, bytearray], fsync: bool = True
+    ):
         """Write a page of data in the tree file itself.
 
         To be used during checkpoints and other non-standard uses.
@@ -340,8 +369,9 @@ class FileMemory:
         self._fd.seek(page * self._tree_conf.page_size)
         write_to_file(self._fd, self._dir_fd, data, fsync=fsync)
 
+    @beartype
     def __repr__(self):
-        return '<FileMemory: {}>'.format(self._filename)
+        return "<FileMemory: {}>".format(self._filename)
 
 
 class FrameType(enum.Enum):
@@ -351,16 +381,21 @@ class FrameType(enum.Enum):
 
 
 class WAL:
+    __slots__ = [
+        "filename",
+        "_fd",
+        "_dir_fd",
+        "_page_size",
+        "_committed_pages",
+        "_not_committed_pages",
+        "needs_recovery",
+    ]
 
-    __slots__ = ['filename', '_fd', '_dir_fd', '_page_size',
-                 '_committed_pages', '_not_committed_pages', 'needs_recovery']
+    FRAME_HEADER_LENGTH = FRAME_TYPE_BYTES + PAGE_REFERENCE_BYTES
 
-    FRAME_HEADER_LENGTH = (
-        FRAME_TYPE_BYTES + PAGE_REFERENCE_BYTES
-    )
-
+    @beartype
     def __init__(self, filename: str, page_size: int):
-        self.filename = filename + '-wal'
+        self.filename = filename + "-wal"
         self._fd, self._dir_fd = open_file_in_dir(self.filename)
         self._page_size = page_size
         self._committed_pages = dict()
@@ -371,23 +406,23 @@ class WAL:
             self._create_header()
             self.needs_recovery = False
         else:
-            logger.warning('Found an existing WAL file, '
-                           'the B+Tree was not closed properly')
+            logger.warning(
+                "Found an existing WAL file, the B+Tree was not closed properly"
+            )
             self.needs_recovery = True
             self._load_wal()
 
+    @beartype
     def checkpoint(self):
         """Transfer the modified data back to the tree and close the WAL."""
         if self._not_committed_pages:
-            logger.warning('Closing WAL with uncommitted data, discarding it')
+            logger.warning("Closing WAL with uncommitted data, discarding it")
 
         fsync_file_and_dir(self._fd.fileno(), self._dir_fd)
 
         for page, page_start in self._committed_pages.items():
             page_data = read_from_file(
-                self._fd,
-                page_start,
-                page_start + self._page_size
+                self._fd, page_start, page_start + self._page_size
             )
             yield page, page_data
 
@@ -397,11 +432,13 @@ class WAL:
             os.fsync(self._dir_fd)
             os.close(self._dir_fd)
 
+    @beartype
     def _create_header(self):
         data = self._page_size.to_bytes(OTHERS_BYTES, ENDIAN)
         self._fd.seek(0)
         write_to_file(self._fd, self._dir_fd, data, True)
 
+    @beartype
     def _load_wal(self):
         self._fd.seek(0)
         header_data = read_from_file(self._fd, 0, OTHERS_BYTES)
@@ -413,9 +450,10 @@ class WAL:
             except ReachedEndOfFile:
                 break
         if self._not_committed_pages:
-            logger.warning('WAL has uncommitted data, discarding it')
+            logger.warning("WAL has uncommitted data, discarding it")
             self._not_committed_pages = dict()
 
+    @beartype
     def _load_next_frame(self):
         start = self._fd.tell()
         stop = start + self.FRAME_HEADER_LENGTH
@@ -423,8 +461,7 @@ class WAL:
 
         frame_type = int.from_bytes(data[0:FRAME_TYPE_BYTES], ENDIAN)
         page = int.from_bytes(
-            data[FRAME_TYPE_BYTES:FRAME_TYPE_BYTES+PAGE_REFERENCE_BYTES],
-            ENDIAN
+            data[FRAME_TYPE_BYTES : FRAME_TYPE_BYTES + PAGE_REFERENCE_BYTES], ENDIAN
         )
 
         frame_type = FrameType(frame_type)
@@ -433,6 +470,7 @@ class WAL:
 
         self._index_frame(frame_type, page, stop)
 
+    @beartype
     def _index_frame(self, frame_type: FrameType, page: int, page_start: int):
         if frame_type is FrameType.PAGE:
             self._not_committed_pages[page] = page_start
@@ -444,26 +482,31 @@ class WAL:
         else:
             assert False
 
-    def _add_frame(self, frame_type: FrameType, page: Optional[int]=None,
-                   page_data: Optional[bytes]=None):
+    @beartype
+    def _add_frame(
+        self,
+        frame_type: FrameType,
+        page: Optional[int] = None,
+        page_data: Optional[bytes] = None,
+    ):
         if frame_type is FrameType.PAGE and (not page or not page_data):
-            raise ValueError('PAGE frame without page data')
+            raise ValueError("PAGE frame without page data")
         if page_data and len(page_data) != self._page_size:
-            raise ValueError('Page data is different from page size')
+            raise ValueError("Page data is different from page size")
         if not page:
             page = 0
         if frame_type is not FrameType.PAGE:
-            page_data = b''
+            page_data = b""
         data = (
-            frame_type.value.to_bytes(FRAME_TYPE_BYTES, ENDIAN) +
-            page.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN) +
-            page_data
+            frame_type.value.to_bytes(FRAME_TYPE_BYTES, ENDIAN)
+            + page.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN)
+            + page_data
         )
         self._fd.seek(0, io.SEEK_END)
-        write_to_file(self._fd, self._dir_fd, data,
-                      fsync=frame_type != FrameType.PAGE)
+        write_to_file(self._fd, self._dir_fd, data, fsync=frame_type != FrameType.PAGE)
         self._index_frame(frame_type, page, self._fd.tell() - self._page_size)
 
+    @beartype
     def get_page(self, page: int) -> Optional[bytes]:
         page_start = None
         for store in (self._not_committed_pages, self._committed_pages):
@@ -474,21 +517,24 @@ class WAL:
         if not page_start:
             return None
 
-        return read_from_file(self._fd, page_start,
-                              page_start + self._page_size)
+        return read_from_file(self._fd, page_start, page_start + self._page_size)
 
+    @beartype
     def set_page(self, page: int, page_data: bytes):
         self._add_frame(FrameType.PAGE, page, page_data)
 
+    @beartype
     def commit(self):
         # Commit is a no-op when there is no uncommitted pages
         if self._not_committed_pages:
             self._add_frame(FrameType.COMMIT)
 
+    @beartype
     def rollback(self):
         # Rollback is a no-op when there is no uncommitted pages
         if self._not_committed_pages:
             self._add_frame(FrameType.ROLLBACK)
 
+    @beartype
     def __repr__(self):
-        return '<WAL: {}>'.format(self.filename)
+        return "<WAL: {}>".format(self.filename)

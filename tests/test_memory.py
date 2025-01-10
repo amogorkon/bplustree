@@ -5,13 +5,18 @@ from unittest import mock
 
 import pytest
 
-from bplustree.node import LeafNode, FreelistNode
-from bplustree.memory import (
-    FileMemory, open_file_in_dir, WAL, ReachedEndOfFile, write_to_file
-)
 from bplustree.const import TreeConf
-from .conftest import filename
+from bplustree.memory import (
+    WAL,
+    FileMemory,
+    ReachedEndOfFile,
+    open_file_in_dir,
+    write_to_file,
+)
+from bplustree.node import FreelistNode, LeafNode
 from bplustree.serializer import IntSerializer
+
+from .conftest import filename
 
 tree_conf = TreeConf(4096, 4, 16, 16, IntSerializer())
 node = LeafNode(tree_conf, page=3)
@@ -50,7 +55,8 @@ def test_file_memory_freelist():
 
     mem.del_page(1)
     assert mem._traverse_free_list() == (
-        None, FreelistNode(tree_conf, page=1, next_page=None)
+        None,
+        FreelistNode(tree_conf, page=1, next_page=None),
     )
     assert mem.next_available_page == 1
     assert mem._traverse_free_list() == (None, None)
@@ -59,12 +65,12 @@ def test_file_memory_freelist():
     mem.del_page(2)
     assert mem._traverse_free_list() == (
         FreelistNode(tree_conf, page=1, next_page=2),
-        FreelistNode(tree_conf, page=2, next_page=None)
+        FreelistNode(tree_conf, page=2, next_page=None),
     )
     mem.del_page(3)
     assert mem._traverse_free_list() == (
         FreelistNode(tree_conf, page=2, next_page=3),
-        FreelistNode(tree_conf, page=3, next_page=None)
+        FreelistNode(tree_conf, page=3, next_page=None),
     )
 
     assert mem._pop_from_freelist() == 3
@@ -75,7 +81,7 @@ def test_file_memory_freelist():
 
 def test_open_file_in_dir():
     with pytest.raises(ValueError):
-        open_file_in_dir('/foo/bar/does/not/exist')
+        open_file_in_dir("/foo/bar/does/not/exist")
 
     # Create file and re-open
     for _ in range(2):
@@ -84,7 +90,7 @@ def test_open_file_in_dir():
         assert isinstance(file_fd, io.FileIO)
         file_fd.close()
 
-        if platform.system() == 'Windows':
+        if platform.system() == "Windows":
             assert dir_fd is None
         else:
             assert isinstance(dir_fd, int)
@@ -103,10 +109,10 @@ def test_write_to_file_multi_times():
     mock_fd = mock.MagicMock()
     mock_fd.write.side_effect = side_effect
 
-    write_to_file(mock_fd, None, b'abcdefg')
+    write_to_file(mock_fd, None, b"abcdefg")
 
 
-@mock.patch('bplustree.memory.platform.system', return_value='Windows')
+@mock.patch("bplustree.memory.platform.system", return_value="Windows")
 def test_open_file_in_dir_windows(_):
     file_fd, dir_fd = open_file_in_dir(filename)
     assert isinstance(file_fd, io.FileIO)
@@ -151,7 +157,7 @@ def test_file_memory_write_transaction_error():
             assert mem._wal._not_committed_pages == {3: 9}
             assert mem._wal._committed_pages == {}
             assert mem._lock.writer_lock.acquire.call_count == 1
-            raise ValueError('Foo')
+            raise ValueError("Foo")
 
     assert mem._wal._not_committed_pages == {}
     assert mem._wal._committed_pages == {}
@@ -161,7 +167,7 @@ def test_file_memory_write_transaction_error():
 
 def test_file_memory_repr():
     mem = FileMemory(filename, tree_conf)
-    assert repr(mem) == '<FileMemory: {}>'.format(filename)
+    assert repr(mem) == "<FileMemory: {}>".format(filename)
     mem.close()
 
 
@@ -174,45 +180,45 @@ def test_wal_create_reopen_empty():
 
 def test_wal_create_reopen_uncommitted():
     wal = WAL(filename, 64)
-    wal.set_page(1, b'1' * 64)
+    wal.set_page(1, b"1" * 64)
     wal.commit()
-    wal.set_page(2, b'2' * 64)
-    assert wal.get_page(1) == b'1' * 64
-    assert wal.get_page(2) == b'2' * 64
+    wal.set_page(2, b"2" * 64)
+    assert wal.get_page(1) == b"1" * 64
+    assert wal.get_page(2) == b"2" * 64
 
     wal = WAL(filename, 64)
-    assert wal.get_page(1) == b'1' * 64
+    assert wal.get_page(1) == b"1" * 64
     assert wal.get_page(2) is None
 
 
 def test_wal_rollback():
     wal = WAL(filename, 64)
-    wal.set_page(1, b'1' * 64)
+    wal.set_page(1, b"1" * 64)
     wal.commit()
-    wal.set_page(2, b'2' * 64)
-    assert wal.get_page(1) == b'1' * 64
-    assert wal.get_page(2) == b'2' * 64
+    wal.set_page(2, b"2" * 64)
+    assert wal.get_page(1) == b"1" * 64
+    assert wal.get_page(2) == b"2" * 64
 
     wal.rollback()
-    assert wal.get_page(1) == b'1' * 64
+    assert wal.get_page(1) == b"1" * 64
     assert wal.get_page(2) is None
 
 
 def test_wal_checkpoint():
     wal = WAL(filename, 64)
-    wal.set_page(1, b'1' * 64)
+    wal.set_page(1, b"1" * 64)
     wal.commit()
-    wal.set_page(2, b'2' * 64)
+    wal.set_page(2, b"2" * 64)
 
     rv = wal.checkpoint()
-    assert list(rv) == [(1, b'1' * 64)]
+    assert list(rv) == [(1, b"1" * 64)]
 
     with pytest.raises(ValueError):
-        wal.set_page(3, b'3' * 64)
+        wal.set_page(3, b"3" * 64)
 
-    assert os.path.isfile(filename + '-wal') is False
+    assert os.path.isfile(filename + "-wal") is False
 
 
 def test_wal_repr():
     wal = WAL(filename, 64)
-    assert repr(wal) == '<WAL: {}-wal>'.format(filename)
+    assert repr(wal) == "<WAL: {}-wal>".format(filename)

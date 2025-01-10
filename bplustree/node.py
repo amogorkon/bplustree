@@ -2,15 +2,20 @@ import abc
 import bisect
 import math
 from typing import Optional
+from beartype import beartype
 
-from .const import (ENDIAN, NODE_TYPE_BYTES, USED_PAGE_LENGTH_BYTES,
-                    PAGE_REFERENCE_BYTES, TreeConf)
+from .const import (
+    ENDIAN,
+    NODE_TYPE_BYTES,
+    USED_PAGE_LENGTH_BYTES,
+    PAGE_REFERENCE_BYTES,
+    TreeConf,
+)
 from .entry import Entry, Record, Reference, OpaqueData
 
 
 class Node(metaclass=abc.ABCMeta):
-
-    __slots__ = ['_tree_conf', 'entries', 'page', 'parent', 'next_page']
+    __slots__ = ["_tree_conf", "entries", "page", "parent", "next_page"]
 
     # Attributes to redefine in inherited classes
     _node_type_int = 0
@@ -18,8 +23,15 @@ class Node(metaclass=abc.ABCMeta):
     min_children = 0
     _entry_class = None
 
-    def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
-                 page: int=None, parent: 'Node'=None, next_page: int=None):
+    @beartype
+    def __init__(
+        self,
+        tree_conf: TreeConf,
+        data: Optional[bytes] = None,
+        page: int = None,
+        parent: "Node" = None,
+        next_page: int = None,
+    ):
         self._tree_conf = tree_conf
         self.entries = list()
         self.page = page
@@ -28,6 +40,7 @@ class Node(metaclass=abc.ABCMeta):
         if data:
             self.load(data)
 
+    @beartype
     def load(self, data: bytes):
         assert len(data) == self._tree_conf.page_size
         end_used_page_length = NODE_TYPE_BYTES + USED_PAGE_LENGTH_BYTES
@@ -35,9 +48,7 @@ class Node(metaclass=abc.ABCMeta):
             data[NODE_TYPE_BYTES:end_used_page_length], ENDIAN
         )
         end_header = end_used_page_length + PAGE_REFERENCE_BYTES
-        self.next_page = int.from_bytes(
-            data[end_used_page_length:end_header], ENDIAN
-        )
+        self.next_page = int.from_bytes(data[end_used_page_length:end_header], ENDIAN)
         if self.next_page == 0:
             self.next_page = None
 
@@ -53,10 +64,11 @@ class Node(metaclass=abc.ABCMeta):
             entry_length = used_page_length - end_header
 
         for start_offset in range(end_header, used_page_length, entry_length):
-            entry_data = data[start_offset:start_offset+entry_length]
+            entry_data = data[start_offset : start_offset + entry_length]
             entry = self._entry_class(self._tree_conf, data=entry_data)
             self.entries.append(entry)
 
+    @beartype
     def dump(self) -> bytearray:
         data = bytearray()
         for record in self.entries:
@@ -70,9 +82,9 @@ class Node(metaclass=abc.ABCMeta):
 
         next_page = 0 if self.next_page is None else self.next_page
         header = (
-            self._node_type_int.to_bytes(1, ENDIAN) +
-            used_page_length.to_bytes(3, ENDIAN) +
-            next_page.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN)
+            self._node_type_int.to_bytes(1, ENDIAN)
+            + used_page_length.to_bytes(3, ENDIAN)
+            + next_page.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN)
         )
 
         data = bytearray(header) + data
@@ -85,48 +97,57 @@ class Node(metaclass=abc.ABCMeta):
         return data
 
     @property
+    @beartype
     def max_payload(self) -> int:
         """Size in bytes of serialized payload a Node can carry."""
-        return (
-            self._tree_conf.page_size - 4 - PAGE_REFERENCE_BYTES
-        )
+        return self._tree_conf.page_size - 4 - PAGE_REFERENCE_BYTES
 
     @property
+    @beartype
     def can_add_entry(self) -> bool:
         return self.num_children < self.max_children
 
     @property
+    @beartype
     def can_delete_entry(self) -> bool:
         return self.num_children > self.min_children
 
     @property
+    @beartype
     def smallest_key(self):
         return self.smallest_entry.key
 
     @property
+    @beartype
     def smallest_entry(self):
         return self.entries[0]
 
     @property
+    @beartype
     def biggest_key(self):
         return self.biggest_entry.key
 
     @property
+    @beartype
     def biggest_entry(self):
         return self.entries[-1]
 
     @property
+    @beartype
     def num_children(self) -> int:
         """Number of entries or other nodes connected to the node."""
         return len(self.entries)
 
+    @beartype
     def pop_smallest(self) -> Entry:
         """Remove and return the smallest entry."""
         return self.entries.pop(0)
 
+    @beartype
     def insert_entry(self, entry: Entry):
         bisect.insort(self.entries, entry)
 
+    @beartype
     def insert_entry_at_the_end(self, entry: Entry):
         """Insert an entry at the end of the entry list.
 
@@ -135,36 +156,42 @@ class Node(metaclass=abc.ABCMeta):
         """
         self.entries.append(entry)
 
+    @beartype
     def remove_entry(self, key):
         self.entries.pop(self._find_entry_index(key))
 
+    @beartype
     def get_entry(self, key) -> Entry:
         return self.entries[self._find_entry_index(key)]
 
+    @beartype
     def _find_entry_index(self, key) -> int:
         entry = self._entry_class(
             self._tree_conf,
-            key=key  # Hack to compare and order
+            key=key,  # Hack to compare and order
         )
         i = bisect.bisect_left(self.entries, entry)
         if i != len(self.entries) and self.entries[i] == entry:
             return i
-        raise ValueError('No entry for key {}'.format(key))
+        raise ValueError("No entry for key {}".format(key))
 
+    @beartype
     def split_entries(self) -> list:
         """Split the entries in half.
 
         Keep the lower part in the node and return the upper one.
         """
         len_entries = len(self.entries)
-        rv = self.entries[len_entries//2:]
-        self.entries = self.entries[:len_entries//2]
+        rv = self.entries[len_entries // 2 :]
+        self.entries = self.entries[: len_entries // 2]
         assert len(self.entries) + len(rv) == len_entries
         return rv
 
     @classmethod
-    def from_page_data(cls, tree_conf: TreeConf, data: bytes,
-                       page: int=None) -> 'Node':
+    @beartype
+    def from_page_data(
+        cls, tree_conf: TreeConf, data: bytes, page: int = None
+    ) -> "Node":
         node_type_byte = data[0:NODE_TYPE_BYTES]
         node_type_int = int.from_bytes(node_type_byte, ENDIAN)
         if node_type_int == 1:
@@ -180,27 +207,35 @@ class Node(metaclass=abc.ABCMeta):
         elif node_type_int == 6:
             return FreelistNode(tree_conf, data, page)
         else:
-            assert False, 'No Node with type {} exists'.format(node_type_int)
+            assert False, "No Node with type {} exists".format(node_type_int)
 
+    @beartype
     def __repr__(self):
-        return '<{}: page={} entries={}>'.format(
+        return "<{}: page={} entries={}>".format(
             self.__class__.__name__, self.page, len(self.entries)
         )
 
+    @beartype
     def __eq__(self, other):
         return (
-            self.__class__ is other.__class__ and
-            self.page == other.page and
-            self.entries == other.entries
+            self.__class__ is other.__class__
+            and self.page == other.page
+            and self.entries == other.entries
         )
 
 
 class RecordNode(Node):
+    __slots__ = ["_entry_class"]
 
-    __slots__ = ['_entry_class']
-
-    def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
-                 page: int=None, parent: 'Node'=None, next_page: int=None):
+    @beartype
+    def __init__(
+        self,
+        tree_conf: TreeConf,
+        data: Optional[bytes] = None,
+        page: int = None,
+        parent: "Node" = None,
+        next_page: int = None,
+    ):
         self._entry_class = Record
         super().__init__(tree_conf, data, page, parent, next_page)
 
@@ -211,15 +246,22 @@ class LonelyRootNode(RecordNode):
     It is an exception for when there is only a single node in the tree.
     """
 
-    __slots__ = ['_node_type_int', 'min_children', 'max_children']
+    __slots__ = ["_node_type_int", "min_children", "max_children"]
 
-    def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
-                 page: int=None, parent: 'Node'=None):
+    @beartype
+    def __init__(
+        self,
+        tree_conf: TreeConf,
+        data: Optional[bytes] = None,
+        page: int = None,
+        parent: "Node" = None,
+    ):
         self._node_type_int = 1
         self.min_children = 0
         self.max_children = tree_conf.order - 1
         super().__init__(tree_conf, data, page, parent)
 
+    @beartype
     def convert_to_leaf(self):
         leaf = LeafNode(self._tree_conf, page=self.page)
         leaf.entries = self.entries
@@ -229,10 +271,17 @@ class LonelyRootNode(RecordNode):
 class LeafNode(RecordNode):
     """Node that holds the actual records within the tree."""
 
-    __slots__ = ['_node_type_int', 'min_children', 'max_children']
+    __slots__ = ["_node_type_int", "min_children", "max_children"]
 
-    def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
-                 page: int=None, parent: 'Node'=None, next_page: int=None):
+    @beartype
+    def __init__(
+        self,
+        tree_conf: TreeConf,
+        data: Optional[bytes] = None,
+        page: int = None,
+        parent: "Node" = None,
+        next_page: int = None,
+    ):
         self._node_type_int = 4
         self.min_children = math.ceil(tree_conf.order / 2) - 1
         self.max_children = tree_conf.order - 1
@@ -240,19 +289,26 @@ class LeafNode(RecordNode):
 
 
 class ReferenceNode(Node):
+    __slots__ = ["_entry_class"]
 
-    __slots__ = ['_entry_class']
-
-    def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
-                 page: int=None, parent: 'Node'=None):
+    @beartype
+    def __init__(
+        self,
+        tree_conf: TreeConf,
+        data: Optional[bytes] = None,
+        page: int = None,
+        parent: "Node" = None,
+    ):
         self._entry_class = Reference
         super().__init__(tree_conf, data, page, parent)
 
     @property
+    @beartype
     def num_children(self) -> int:
         return len(self.entries) + 1 if self.entries else 0
 
-    def insert_entry(self, entry: 'Reference'):
+    @beartype
+    def insert_entry(self, entry: "Reference"):
         """Make sure that after of a reference matches before of the next one.
 
         Probably very inefficient approach.
@@ -260,10 +316,10 @@ class ReferenceNode(Node):
         super().insert_entry(entry)
         i = self.entries.index(entry)
         if i > 0:
-            previous_entry = self.entries[i-1]
+            previous_entry = self.entries[i - 1]
             previous_entry.after = entry.before
         try:
-            next_entry = self.entries[i+1]
+            next_entry = self.entries[i + 1]
         except IndexError:
             pass
         else:
@@ -273,15 +329,22 @@ class ReferenceNode(Node):
 class RootNode(ReferenceNode):
     """The first node at the top of the tree."""
 
-    __slots__ = ['_node_type_int', 'min_children', 'max_children']
+    __slots__ = ["_node_type_int", "min_children", "max_children"]
 
-    def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
-                 page: int=None, parent: 'Node'=None):
+    @beartype
+    def __init__(
+        self,
+        tree_conf: TreeConf,
+        data: Optional[bytes] = None,
+        page: int = None,
+        parent: "Node" = None,
+    ):
         self._node_type_int = 2
         self.min_children = 2
         self.max_children = tree_conf.order
         super().__init__(tree_conf, data, page, parent)
 
+    @beartype
     def convert_to_internal(self):
         internal = InternalNode(self._tree_conf, page=self.page)
         internal.entries = self.entries
@@ -291,10 +354,16 @@ class RootNode(ReferenceNode):
 class InternalNode(ReferenceNode):
     """Node that only holds references to other Internal nodes or Leaves."""
 
-    __slots__ = ['_node_type_int', 'min_children', 'max_children']
+    __slots__ = ["_node_type_int", "min_children", "max_children"]
 
-    def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
-                 page: int=None, parent: 'Node'=None):
+    @beartype
+    def __init__(
+        self,
+        tree_conf: TreeConf,
+        data: Optional[bytes] = None,
+        page: int = None,
+        parent: "Node" = None,
+    ):
         self._node_type_int = 3
         self.min_children = math.ceil(tree_conf.order / 2)
         self.max_children = tree_conf.order
@@ -304,16 +373,23 @@ class InternalNode(ReferenceNode):
 class OverflowNode(Node):
     """Node that holds a single Record value too large for its Node."""
 
-    def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
-                 page: int=None, next_page: int=None):
+    @beartype
+    def __init__(
+        self,
+        tree_conf: TreeConf,
+        data: Optional[bytes] = None,
+        page: int = None,
+        next_page: int = None,
+    ):
         self._node_type_int = 5
         self.max_children = 1
         self.min_children = 1
         self._entry_class = OpaqueData
         super().__init__(tree_conf, data, page, next_page=next_page)
 
+    @beartype
     def __repr__(self):
-        return '<{}: page={} next_page={}>'.format(
+        return "<{}: page={} next_page={}>".format(
             self.__class__.__name__, self.page, self.next_page
         )
 
@@ -321,14 +397,21 @@ class OverflowNode(Node):
 class FreelistNode(Node):
     """Node that is a marker for a deallocated page."""
 
-    def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
-                 page: int=None, next_page: int=None):
+    @beartype
+    def __init__(
+        self,
+        tree_conf: TreeConf,
+        data: Optional[bytes] = None,
+        page: int = None,
+        next_page: int = None,
+    ):
         self._node_type_int = 6
         self.max_children = 0
         self.min_children = 0
         super().__init__(tree_conf, data, page, next_page=next_page)
 
+    @beartype
     def __repr__(self):
-        return '<{}: page={} next_page={}>'.format(
+        return "<{}: page={} next_page={}>".format(
             self.__class__.__name__, self.page, self.next_page
         )
