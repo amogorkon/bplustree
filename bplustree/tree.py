@@ -1,22 +1,27 @@
+from __future__ import annotations
+from collections.abc import Iterable, Iterator
+from datetime import datetime
 from functools import partial
 from logging import getLogger
-from collections.abc import Iterator, Iterable
+from pathlib import Path
+from typing import Tuple
+from uuid import UUID
+
 from beartype import beartype
 
 from . import utils
 from .const import TreeConf
-from .entry import Record, Reference, OpaqueData
+from .entry import OpaqueData, Record, Reference
 from .memory import FileMemory
-from .node import Node, LonelyRootNode, RootNode, InternalNode, LeafNode, OverflowNode
-from .serializer import Serializer, IntSerializer
-
+from .node import InternalNode, LeafNode, LonelyRootNode, Node, OverflowNode, RootNode
+from .serializer import IntSerializer, Serializer
 
 logger = getLogger(__name__)
 
 
 class BPlusTree:
     __slots__ = [
-        "_filename",
+        "_filepath",
         "_tree_conf",
         "_mem",
         "_root_node_page",
@@ -35,7 +40,7 @@ class BPlusTree:
     @beartype
     def __init__(
         self,
-        filename: str,
+        filepath: Path,
         page_size: int = 4096,
         order: int = 100,
         key_size: int = 8,
@@ -43,12 +48,12 @@ class BPlusTree:
         cache_size: int = 64,
         serializer: Serializer | None = None,
     ):
-        self._filename = filename
+        self._filepath = filepath
         self._tree_conf = TreeConf(
             page_size, order, key_size, value_size, serializer or IntSerializer()
         )
         self._create_partials()
-        self._mem = FileMemory(filename, self._tree_conf, cache_size=cache_size)
+        self._mem = FileMemory(filepath, self._tree_conf, cache_size=cache_size)
         try:
             metadata = self._mem.get_metadata()
         except ValueError:
@@ -81,7 +86,7 @@ class BPlusTree:
             self._mem.perform_checkpoint(reopen_wal=True)
 
     @beartype
-    def insert(self, key, value: bytes, replace=False):
+    def insert(self, key: int | str | UUID | datetime, value: bytes, replace=False):
         """Insert a value in the tree.
 
         :param key: The key at which the value will be recorded, must be of the
@@ -178,7 +183,9 @@ class BPlusTree:
                 self._mem.set_node(node)
 
     @beartype
-    def get(self, key, default=None) -> bytes:
+    def get(
+        self, key: int | str | UUID | datetime, default: bytes | None = None
+    ) -> bytes | None:
         with self._mem.read_transaction:
             node = self._search_in_tree(key, self._root_node)
             try:
@@ -252,7 +259,9 @@ class BPlusTree:
     keys = __iter__
 
     @beartype
-    def items(self, slice_: slice | None = None) -> Iterator[tuple]:
+    def items(
+        self, slice_: slice | None = None
+    ) -> Iterator[Tuple[int | str | UUID | datetime, bytes]]:
         if not slice_:
             slice_ = slice(None)
         with self._mem.read_transaction:
@@ -276,7 +285,7 @@ class BPlusTree:
 
     @beartype
     def __repr__(self):
-        return f"<BPlusTree: {self._filename} {self._tree_conf}>"
+        return f"<BPlusTree: {self._filepath} {self._tree_conf}>"
 
     # ####################### Implementation ##############################
 
@@ -345,7 +354,7 @@ class BPlusTree:
                 return
 
     @beartype
-    def _search_in_tree(self, key, node) -> Node:
+    def _search_in_tree(self, key: int | str | UUID | datetime, node: Node) -> Node:
         if isinstance(node, (LonelyRootNode, LeafNode)):
             return node
 
@@ -370,7 +379,7 @@ class BPlusTree:
         return self._search_in_tree(key, child_node)
 
     @beartype
-    def _split_leaf(self, old_node: "Node"):
+    def _split_leaf(self, old_node: Node):
         """Split a leaf Node to allow the tree to grow."""
         parent = old_node.parent
         new_node = self.LeafNode(
@@ -475,7 +484,7 @@ class BPlusTree:
             self._mem.del_node(overflow_node)
 
     @beartype
-    def _get_value_from_record(self, record: Record) -> bytes:
+    def _get_value_from_recor(self, record: Record) -> bytes:
         if record.value is not None:
             return record.value
 

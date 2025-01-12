@@ -1,21 +1,23 @@
+from __future__ import annotations
 import enum
 import io
-from logging import getLogger
 import os
 import platform
-from beartype import beartype
+from logging import getLogger
+from pathlib import Path
 
 import cachetools
 import rwlock
+from beartype import beartype
 
-from .node import Node, FreelistNode
 from .const import (
     ENDIAN,
-    PAGE_REFERENCE_BYTES,
-    OTHERS_BYTES,
-    TreeConf,
     FRAME_TYPE_BYTES,
+    OTHERS_BYTES,
+    PAGE_REFERENCE_BYTES,
+    TreeConf,
 )
+from .node import FreelistNode, Node
 
 logger = getLogger(__name__)
 
@@ -25,7 +27,7 @@ class ReachedEndOfFile(Exception):
 
 
 @beartype
-def open_file_in_dir(path: str) -> tuple[io.FileIO, int | None]:
+def open_file_in_dir(path: Path) -> tuple[io.FileIO, int | None]:
     """Open a file and its directory.
 
     The file is opened in binary mode and created if it does not exist.
@@ -34,11 +36,11 @@ def open_file_in_dir(path: str) -> tuple[io.FileIO, int | None]:
 
     On Windows, the directory is not opened, as it is useless.
     """
-    directory = os.path.dirname(path)
-    if not os.path.isdir(directory):
+    directory = path.parent
+    if not directory.is_dir():
         raise ValueError(f"No directory {directory}")
 
-    if not os.path.exists(path):
+    if not path.exists():
         file_fd = open(path, mode="x+b", buffering=0)
     else:
         file_fd = open(path, mode="r+b", buffering=0)
@@ -56,7 +58,10 @@ def open_file_in_dir(path: str) -> tuple[io.FileIO, int | None]:
 
 @beartype
 def write_to_file(
-    file_fd: io.FileIO, dir_fileno: int | None, data: bytes, fsync: bool = True
+    file_fd: io.FileIO,
+    dir_fileno: int | None,
+    data: bytes | bytearray,
+    fsync: bool = True,
 ):
     length_to_write = len(data)
     written = 0
@@ -109,7 +114,7 @@ class FakeCache:
 
 class FileMemory:
     __slots__ = [
-        "_filename",
+        "_filepath",
         "_tree_conf",
         "_lock",
         "_cache",
@@ -122,8 +127,8 @@ class FileMemory:
     ]
 
     @beartype
-    def __init__(self, filename: str, tree_conf: TreeConf, cache_size: int = 512):
-        self._filename = filename
+    def __init__(self, filepath: Path, tree_conf: TreeConf, cache_size: int = 512):
+        self._filepath = filepath
         self._tree_conf = tree_conf
         self._lock = rwlock.RWLock()
 
@@ -132,9 +137,9 @@ class FileMemory:
         else:
             self._cache = cachetools.LRUCache(maxsize=cache_size)
 
-        self._fd, self._dir_fd = open_file_in_dir(filename)
+        self._fd, self._dir_fd = open_file_in_dir(filepath)
 
-        self._wal = WAL(filename, tree_conf.page_size)
+        self._wal = WAL(filepath, tree_conf.page_size)
         if self._wal.needs_recovery:
             self.perform_checkpoint(reopen_wal=True)
 
@@ -338,12 +343,12 @@ class FileMemory:
 
     @beartype
     def perform_checkpoint(self, reopen_wal=False):
-        logger.info("Performing checkpoint of %s", self._filename)
+        logger.info("Performing checkpoint of %s", self._filepath)
         for page, page_data in self._wal.checkpoint():
             self._write_page_in_tree(page, page_data, fsync=False)
         fsync_file_and_dir(self._fd.fileno(), self._dir_fd)
         if reopen_wal:
-            self._wal = WAL(self._filename, self._tree_conf.page_size)
+            self._wal = WAL(self._filepath, self._tree_conf.page_size)
 
     @beartype
     def _read_page(self, page: int) -> bytes:
@@ -366,7 +371,7 @@ class FileMemory:
 
     @beartype
     def __repr__(self):
-        return f"<FileMemory: {self._filename}>"
+        return f"<FileMemory: {self._filepath}>"
 
 
 class FrameType(enum.Enum):
@@ -377,7 +382,7 @@ class FrameType(enum.Enum):
 
 class WAL:
     __slots__ = [
-        "filename",
+        "filepath",
         "_fd",
         "_dir_fd",
         "_page_size",
@@ -389,9 +394,9 @@ class WAL:
     FRAME_HEADER_LENGTH = FRAME_TYPE_BYTES + PAGE_REFERENCE_BYTES
 
     @beartype
-    def __init__(self, filename: str, page_size: int):
-        self.filename = f"{filename}-wal"
-        self._fd, self._dir_fd = open_file_in_dir(self.filename)
+    def __init__(self, filepath: Path, page_size: int):
+        self.filepath = filepath.with_suffix(f"{filepath.suffix}-wal")
+        self._fd, self._dir_fd = open_file_in_dir(self.filepath)
         self._page_size = page_size
         self._committed_pages = {}
         self._not_committed_pages = {}
@@ -422,7 +427,7 @@ class WAL:
             yield page, page_data
 
         self._fd.close()
-        os.unlink(self.filename)
+        self.filepath.unlink()
         if self._dir_fd is not None:
             os.fsync(self._dir_fd)
             os.close(self._dir_fd)
@@ -482,7 +487,7 @@ class WAL:
         self,
         frame_type: FrameType,
         page: int | None = None,
-        page_data: bytes | None = None,
+        page_data: bytes | bytearray | None = None,
     ):
         if frame_type is FrameType.PAGE and (not page or not page_data):
             raise ValueError("PAGE frame without page data")
@@ -515,7 +520,7 @@ class WAL:
         return read_from_file(self._fd, page_start, page_start + self._page_size)
 
     @beartype
-    def set_page(self, page: int, page_data: bytes):
+    def set_page(self, page: int, page_data: bytes | bytearray):
         self._add_frame(FrameType.PAGE, page, page_data)
 
     @beartype
@@ -532,4 +537,4 @@ class WAL:
 
     @beartype
     def __repr__(self):
-        return f"<WAL: {self.filename}>"
+        return f"<WAL: {self.filepath}>"

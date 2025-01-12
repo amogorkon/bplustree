@@ -1,3 +1,4 @@
+from __future__ import annotations
 import abc
 import bisect
 import math
@@ -27,10 +28,10 @@ class Node(metaclass=abc.ABCMeta):
     def __init__(
         self,
         tree_conf: TreeConf,
-        data: bytes | None = None,
-        page: int = None,
-        parent: "Node" = None,
-        next_page: int = None,
+        data: bytes | bytearray | None = None,
+        page: int | None = None,
+        parent: Node | None = None,
+        next_page: int | None = None,
     ):
         self._tree_conf = tree_conf
         self.entries = []
@@ -41,7 +42,7 @@ class Node(metaclass=abc.ABCMeta):
             self.load(data)
 
     @beartype
-    def load(self, data: bytes):
+    def load(self, data: bytes | bytearray):
         assert len(data) == self._tree_conf.page_size
         end_used_page_length = NODE_TYPE_BYTES + USED_PAGE_LENGTH_BYTES
         used_page_length = int.from_bytes(
@@ -190,7 +191,7 @@ class Node(metaclass=abc.ABCMeta):
     @classmethod
     @beartype
     def from_page_data(
-        cls, tree_conf: TreeConf, data: bytes, page: int = None
+        cls, tree_conf: TreeConf, data: bytes | bytearray, page: int | None = None
     ) -> "Node":
         node_type_byte = data[:NODE_TYPE_BYTES]
         node_type_int = int.from_bytes(node_type_byte, ENDIAN)
@@ -231,10 +232,10 @@ class RecordNode(Node):
     def __init__(
         self,
         tree_conf: TreeConf,
-        data: bytes | None = None,
-        page: int = None,
-        parent: "Node" = None,
-        next_page: int = None,
+        data: bytes | bytearray | None = None,
+        page: int | None = None,
+        parent: Node | None = None,
+        next_page: int | None = None,
     ):
         self._entry_class = Record
         super().__init__(tree_conf, data, page, parent, next_page)
@@ -252,9 +253,9 @@ class LonelyRootNode(RecordNode):
     def __init__(
         self,
         tree_conf: TreeConf,
-        data: bytes | None = None,
-        page: int = None,
-        parent: "Node" = None,
+        data: bytes | bytearray | None = None,
+        page: int | None = None,
+        parent: Node | None = None,
     ):
         self._node_type_int = 1
         self.min_children = 0
@@ -277,10 +278,10 @@ class LeafNode(RecordNode):
     def __init__(
         self,
         tree_conf: TreeConf,
-        data: bytes | None = None,
-        page: int = None,
-        parent: "Node" = None,
-        next_page: int = None,
+        data: bytes | bytearray | None = None,
+        page: int | None = None,
+        parent: Node | None = None,
+        next_page: int | None = None,
     ):
         self._node_type_int = 4
         self.min_children = math.ceil(tree_conf.order / 2) - 1
@@ -295,9 +296,9 @@ class ReferenceNode(Node):
     def __init__(
         self,
         tree_conf: TreeConf,
-        data: bytes | None = None,
-        page: int = None,
-        parent: "Node" = None,
+        data: bytes | bytearray | None = None,
+        page: int | None = None,
+        parent: Node | None = None,
     ):
         self._entry_class = Reference
         super().__init__(tree_conf, data, page, parent)
@@ -335,9 +336,9 @@ class RootNode(ReferenceNode):
     def __init__(
         self,
         tree_conf: TreeConf,
-        data: bytes | None = None,
-        page: int = None,
-        parent: "Node" = None,
+        data: bytes | bytearray | None = None,
+        page: int | None = None,
+        parent: Node | None = None,
     ):
         self._node_type_int = 2
         self.min_children = 2
@@ -360,9 +361,9 @@ class InternalNode(ReferenceNode):
     def __init__(
         self,
         tree_conf: TreeConf,
-        data: bytes | None = None,
-        page: int = None,
-        parent: "Node" = None,
+        data: bytes | bytearray | None = None,
+        page: int | None = None,
+        parent: Node | None = None,
     ):
         self._node_type_int = 3
         self.min_children = math.ceil(tree_conf.order / 2)
@@ -377,9 +378,9 @@ class OverflowNode(Node):
     def __init__(
         self,
         tree_conf: TreeConf,
-        data: bytes | None = None,
-        page: int = None,
-        next_page: int = None,
+        data: bytes | bytearray | None = None,
+        page: int | None = None,
+        next_page: int | None = None,
     ):
         self._node_type_int = 5
         self.max_children = 1
@@ -401,9 +402,9 @@ class FreelistNode(Node):
     def __init__(
         self,
         tree_conf: TreeConf,
-        data: bytes | None = None,
-        page: int = None,
-        next_page: int = None,
+        data: bytes | bytearray | None = None,
+        page: int | None = None,
+        next_page: int | None = None,
     ):
         self._node_type_int = 6
         self.max_children = 0

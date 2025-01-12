@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import abc
 from datetime import datetime, timezone
 from uuid import UUID
+
 from beartype import beartype
 
 try:
@@ -34,6 +37,9 @@ class IntSerializer(Serializer):
     def deserialize(self, data: bytes) -> int:
         return int.from_bytes(data, ENDIAN)
 
+    def __repr__(self):
+        return "IntSerializer()"
+
 
 class StrSerializer(Serializer):
     __slots__ = []
@@ -46,6 +52,9 @@ class StrSerializer(Serializer):
     def deserialize(self, data: bytes) -> str:
         return data.decode(encoding="utf-8")
 
+    def __repr__(self):
+        return "StrSerializer()"
+
 
 class UUIDSerializer(Serializer):
     __slots__ = []
@@ -55,6 +64,9 @@ class UUIDSerializer(Serializer):
 
     def deserialize(self, data: bytes) -> UUID:
         return UUID(bytes=data)
+
+    def __repr__(self):
+        return "UUIDSerializer()"
 
 
 class DatetimeUTCSerializer(Serializer):
@@ -76,3 +88,6 @@ class DatetimeUTCSerializer(Serializer):
         rv = temporenc.unpackb(data).datetime()
         rv = rv.replace(tzinfo=timezone.utc)
         return rv
+
+    def __repr__(self):
+        return "DatetimeUTCSerializer()"
