@@ -8,7 +8,6 @@ from .const import (
     TreeConf,
 )
 
-
 # Sentinel value indicating that a lazy loaded attribute is not yet loaded
 NOT_LOADED = object()
 
@@ -115,7 +114,7 @@ class Record(ComparableEntry):
         assert len(data) == self.length
 
         end_used_key_length = USED_KEY_LENGTH_BYTES
-        used_key_length = int.from_bytes(data[0:end_used_key_length], ENDIAN)
+        used_key_length = int.from_bytes(data[:end_used_key_length], ENDIAN)
         assert 0 <= used_key_length <= self._tree_conf.key_size
 
         end_key = end_used_key_length + used_key_length
@@ -134,9 +133,7 @@ class Record(ComparableEntry):
 
         start_overflow = end_used_value_length + self._tree_conf.value_size
         end_overflow = start_overflow + PAGE_REFERENCE_BYTES
-        overflow_page = int.from_bytes(data[start_overflow:end_overflow], ENDIAN)
-
-        if overflow_page:
+        if overflow_page := int.from_bytes(data[start_overflow:end_overflow], ENDIAN):
             self._overflow_page = overflow_page
             self._value = None
         else:
@@ -153,13 +150,10 @@ class Record(ComparableEntry):
         )
         used_key_length = len(key_as_bytes)
         overflow_page = self._overflow_page or 0
-        if overflow_page:
-            value = b""
-        else:
-            value = self._value
+        value = b"" if overflow_page else self._value
         used_value_length = len(value)
 
-        data = (
+        return (
             used_key_length.to_bytes(USED_VALUE_LENGTH_BYTES, ENDIAN)
             + key_as_bytes
             + bytes(self._tree_conf.key_size - used_key_length)
@@ -168,14 +162,13 @@ class Record(ComparableEntry):
             + bytes(self._tree_conf.value_size - used_value_length)
             + overflow_page.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN)
         )
-        return data
 
     def __repr__(self):
         if self.overflow_page:
-            return "<Record: {} overflowing value>".format(self.key)
+            return f"<Record: {self.key} overflowing value>"
         if self.value:
-            return "<Record: {} value={}>".format(self.key, self.value[0:16])
-        return "<Record: {} unknown value>".format(self.key)
+            return f"<Record: {self.key} value={self.value[:16]}>"
+        return f"<Record: {self.key} unknown value>"
 
 
 class Reference(ComparableEntry):
@@ -237,7 +230,7 @@ class Reference(ComparableEntry):
     def load(self, data: bytes):
         assert len(data) == self.length
         end_before = PAGE_REFERENCE_BYTES
-        self._before = int.from_bytes(data[0:end_before], ENDIAN)
+        self._before = int.from_bytes(data[:end_before], ENDIAN)
 
         end_used_key_length = end_before + USED_KEY_LENGTH_BYTES
         used_key_length = int.from_bytes(data[end_before:end_used_key_length], ENDIAN)
@@ -264,19 +257,16 @@ class Reference(ComparableEntry):
         )
         used_key_length = len(key_as_bytes)
 
-        data = (
+        return (
             self._before.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN)
             + used_key_length.to_bytes(USED_VALUE_LENGTH_BYTES, ENDIAN)
             + key_as_bytes
             + bytes(self._tree_conf.key_size - used_key_length)
             + self._after.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN)
         )
-        return data
 
     def __repr__(self):
-        return "<Reference: key={} before={} after={}>".format(
-            self.key, self.before, self.after
-        )
+        return f"<Reference: key={self.key} before={self.before} after={self.after}>"
 
 
 class OpaqueData(Entry):
@@ -294,4 +284,4 @@ class OpaqueData(Entry):
         return self.data
 
     def __repr__(self):
-        return "<OpaqueData: {}>".format(self.data)
+        return f"<OpaqueData: {self.data}>"
