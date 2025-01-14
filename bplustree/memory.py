@@ -8,7 +8,6 @@ from pathlib import Path
 
 import cachetools
 import rwlock
-from beartype import beartype
 
 from .const import (
     ENDIAN,
@@ -26,7 +25,6 @@ class ReachedEndOfFile(Exception):
     """Read a file until its end."""
 
 
-@beartype
 def open_file_in_dir(path: Path) -> tuple[io.FileIO, int | None]:
     """Open a file and its directory.
 
@@ -56,7 +54,6 @@ def open_file_in_dir(path: Path) -> tuple[io.FileIO, int | None]:
     return file_fd, dir_fd
 
 
-@beartype
 def write_to_file(
     file_fd: io.FileIO,
     dir_fileno: int | None,
@@ -71,14 +68,12 @@ def write_to_file(
         fsync_file_and_dir(file_fd.fileno(), dir_fileno)
 
 
-@beartype
 def fsync_file_and_dir(file_fileno: int, dir_fileno: int | None):
     os.fsync(file_fileno)
     if dir_fileno is not None:
         os.fsync(dir_fileno)
 
 
-@beartype
 def read_from_file(file_fd: io.FileIO, start: int, stop: int) -> bytes:
     length = stop - start
     assert length >= 0
@@ -99,15 +94,12 @@ class FakeCache:
     Because cachetools does not work with maxsize=0.
     """
 
-    @beartype
     def get(self, k):
         pass
 
-    @beartype
     def __setitem__(self, key, value):
         pass
 
-    @beartype
     def clear(self):
         pass
 
@@ -126,7 +118,6 @@ class FileMemory:
         "_root_node_page",
     ]
 
-    @beartype
     def __init__(self, filepath: Path, tree_conf: TreeConf, cache_size: int = 512):
         self._filepath = filepath
         self._tree_conf = tree_conf
@@ -152,7 +143,6 @@ class FileMemory:
         # Todo: Remove this, it should only be in Tree
         self._root_node_page = 0
 
-    @beartype
     def get_node(self, page: int):
         """Get a node from storage.
 
@@ -175,42 +165,33 @@ class FileMemory:
         self._cache[node.page] = node
         return node
 
-    @beartype
     def set_node(self, node: Node):
         self._wal.set_page(node.page, node.dump())
         self._cache[node.page] = node
 
-    @beartype
     def del_node(self, node: Node):
         self._insert_in_freelist(node.page)
 
-    @beartype
     def del_page(self, page: int):
         self._insert_in_freelist(page)
 
     @property
-    @beartype
     def read_transaction(self):
         class ReadTransaction:
-            @beartype
             def __enter__(self2):
                 self._lock.reader_lock.acquire()
 
-            @beartype
             def __exit__(self2, exc_type, exc_val, exc_tb):
                 self._lock.reader_lock.release()
 
         return ReadTransaction()
 
     @property
-    @beartype
     def write_transaction(self):
         class WriteTransaction:
-            @beartype
             def __enter__(self2):
                 self._lock.writer_lock.acquire()
 
-            @beartype
             def __exit__(self2, exc_type, exc_val, exc_tb):
                 if exc_type:
                     # When an error happens in the middle of a write
@@ -225,7 +206,6 @@ class FileMemory:
         return WriteTransaction()
 
     @property
-    @beartype
     def next_available_page(self) -> int:
         last_freelist_page = self._pop_from_freelist()
         if last_freelist_page is not None:
@@ -234,7 +214,6 @@ class FileMemory:
         self.last_page += 1
         return self.last_page
 
-    @beartype
     def _traverse_free_list(
         self,
     ) -> tuple[FreelistNode | None, FreelistNode | None]:
@@ -250,7 +229,6 @@ class FileMemory:
 
         return second_to_last_node, last_node
 
-    @beartype
     def _insert_in_freelist(self, page: int):
         """Insert a page at the end of the freelist."""
         _, last_node = self._traverse_free_list()
@@ -265,7 +243,6 @@ class FileMemory:
             last_node.next_page = page
             self.set_node(last_node)
 
-    @beartype
     def _pop_from_freelist(self) -> int | None:
         """Remove the last page from the freelist and return its page."""
         second_to_last_node, last_node = self._traverse_free_list()
@@ -285,7 +262,6 @@ class FileMemory:
         return last_node.page
 
     # Todo: make metadata as a normal Node
-    @beartype
     def get_metadata(self) -> tuple:
         try:
             data = self._read_page(0)
@@ -311,7 +287,6 @@ class FileMemory:
         self._root_node_page = root_node_page
         return root_node_page, self._tree_conf
 
-    @beartype
     def set_metadata(self, root_node_page: int | None, tree_conf: TreeConf | None):
         if root_node_page is None:
             root_node_page = self._root_node_page
@@ -334,14 +309,12 @@ class FileMemory:
         self._tree_conf = tree_conf
         self._root_node_page = root_node_page
 
-    @beartype
     def close(self):
         self.perform_checkpoint()
         self._fd.close()
         if self._dir_fd is not None:
             os.close(self._dir_fd)
 
-    @beartype
     def perform_checkpoint(self, reopen_wal=False):
         logger.info("Performing checkpoint of %s", self._filepath)
         for page, page_data in self._wal.checkpoint():
@@ -350,14 +323,12 @@ class FileMemory:
         if reopen_wal:
             self._wal = WAL(self._filepath, self._tree_conf.page_size)
 
-    @beartype
     def _read_page(self, page: int) -> bytes:
         start = page * self._tree_conf.page_size
         stop = start + self._tree_conf.page_size
         assert stop - start == self._tree_conf.page_size
         return read_from_file(self._fd, start, stop)
 
-    @beartype
     def _write_page_in_tree(
         self, page: int, data: bytes | bytearray, fsync: bool = True
     ):
@@ -369,7 +340,6 @@ class FileMemory:
         self._fd.seek(page * self._tree_conf.page_size)
         write_to_file(self._fd, self._dir_fd, data, fsync=fsync)
 
-    @beartype
     def __repr__(self):
         return f"<FileMemory: {self._filepath}>"
 
@@ -393,7 +363,6 @@ class WAL:
 
     FRAME_HEADER_LENGTH = FRAME_TYPE_BYTES + PAGE_REFERENCE_BYTES
 
-    @beartype
     def __init__(self, filepath: Path, page_size: int):
         self.filepath = filepath.with_suffix(f"{filepath.suffix}-wal")
         self._fd, self._dir_fd = open_file_in_dir(self.filepath)
@@ -412,7 +381,6 @@ class WAL:
             self.needs_recovery = True
             self._load_wal()
 
-    @beartype
     def checkpoint(self):
         """Transfer the modified data back to the tree and close the WAL."""
         if self._not_committed_pages:
@@ -432,13 +400,11 @@ class WAL:
             os.fsync(self._dir_fd)
             os.close(self._dir_fd)
 
-    @beartype
     def _create_header(self):
         data = self._page_size.to_bytes(OTHERS_BYTES, ENDIAN)
         self._fd.seek(0)
         write_to_file(self._fd, self._dir_fd, data, True)
 
-    @beartype
     def _load_wal(self):
         self._fd.seek(0)
         header_data = read_from_file(self._fd, 0, OTHERS_BYTES)
@@ -453,7 +419,6 @@ class WAL:
             logger.warning("WAL has uncommitted data, discarding it")
             self._not_committed_pages = {}
 
-    @beartype
     def _load_next_frame(self):
         start = self._fd.tell()
         stop = start + self.FRAME_HEADER_LENGTH
@@ -470,7 +435,6 @@ class WAL:
 
         self._index_frame(frame_type, page, stop)
 
-    @beartype
     def _index_frame(self, frame_type: FrameType, page: int, page_start: int):
         if frame_type is FrameType.PAGE:
             self._not_committed_pages[page] = page_start
@@ -482,7 +446,6 @@ class WAL:
         else:
             assert False
 
-    @beartype
     def _add_frame(
         self,
         frame_type: FrameType,
@@ -506,7 +469,6 @@ class WAL:
         write_to_file(self._fd, self._dir_fd, data, fsync=frame_type != FrameType.PAGE)
         self._index_frame(frame_type, page, self._fd.tell() - self._page_size)
 
-    @beartype
     def get_page(self, page: int) -> bytes | None:
         page_start = None
         for store in (self._not_committed_pages, self._committed_pages):
@@ -519,22 +481,18 @@ class WAL:
 
         return read_from_file(self._fd, page_start, page_start + self._page_size)
 
-    @beartype
     def set_page(self, page: int, page_data: bytes | bytearray):
         self._add_frame(FrameType.PAGE, page, page_data)
 
-    @beartype
     def commit(self):
         # Commit is a no-op when there is no uncommitted pages
         if self._not_committed_pages:
             self._add_frame(FrameType.COMMIT)
 
-    @beartype
     def rollback(self):
         # Rollback is a no-op when there is no uncommitted pages
         if self._not_committed_pages:
             self._add_frame(FrameType.ROLLBACK)
 
-    @beartype
     def __repr__(self):
         return f"<WAL: {self.filepath}>"

@@ -3,7 +3,6 @@ from unittest import mock
 import uuid
 
 import pytest
-from beartype import beartype
 
 from bplustree.serializer import (
     IntSerializer,
@@ -13,7 +12,6 @@ from bplustree.serializer import (
 )
 
 
-@beartype
 def test_int_serializer():
     s = IntSerializer()
     assert s.serialize(42, 2) == b"*\x00"
@@ -21,14 +19,12 @@ def test_int_serializer():
     assert repr(s) == "IntSerializer()"
 
 
-@beartype
 def test_serializer_slots():
     s = IntSerializer()
     with pytest.raises(AttributeError):
         s.foo = True
 
 
-@beartype
 def test_str_serializer():
     s = StrSerializer()
     assert s.serialize("foo", 3) == b"foo"
@@ -36,7 +32,6 @@ def test_str_serializer():
     assert repr(s) == "StrSerializer()"
 
 
-@beartype
 def test_uuid_serializer():
     s = UUIDSerializer()
     id_ = uuid.uuid4()
@@ -45,7 +40,6 @@ def test_uuid_serializer():
     assert repr(s) == "UUIDSerializer()"
 
 
-@beartype
 def test_datetime_utc_serializer():
     s = DatetimeUTCSerializer()
     dt = datetime(2018, 1, 6, 21, 42, 2, 424739, tzinfo=timezone.utc)
@@ -56,7 +50,6 @@ def test_datetime_utc_serializer():
 
 
 @mock.patch.dict("bplustree.serializer.__dict__", {"temporenc": None})
-@beartype
 def test_datetime_utc_serializer_no_temporenc():
     with pytest.raises(RuntimeError):
         DatetimeUTCSerializer()

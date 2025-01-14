@@ -4,8 +4,6 @@ import abc
 from datetime import datetime, timezone
 from uuid import UUID
 
-from beartype import beartype
-
 try:
     import temporenc
 except ImportError:
@@ -18,12 +16,10 @@ class Serializer(metaclass=abc.ABCMeta):
     __slots__ = []
 
     @abc.abstractmethod
-    @beartype
     def serialize(self, obj: object, key_size: int) -> bytes:
         """Serialize a key to bytes."""
 
     @abc.abstractmethod
-    @beartype
     def deserialize(self, data: bytes) -> object:
         """Create a key object from bytes."""
 

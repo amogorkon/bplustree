@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from collections.abc import Iterable, Iterator
 from datetime import datetime
 from functools import partial
@@ -6,8 +7,6 @@ from logging import getLogger
 from pathlib import Path
 from typing import Tuple
 from uuid import UUID
-
-from beartype import beartype
 
 from . import utils
 from .const import TreeConf
@@ -37,7 +36,6 @@ class BPlusTree:
 
     # ######################### Public API ################################
 
-    @beartype
     def __init__(
         self,
         filepath: Path,
@@ -62,7 +60,6 @@ class BPlusTree:
             self._root_node_page, self._tree_conf = metadata
         self._is_open = True
 
-    @beartype
     def close(self):
         with self._mem.write_transaction:
             if not self._is_open:
@@ -72,20 +69,16 @@ class BPlusTree:
             self._mem.close()
             self._is_open = False
 
-    @beartype
     def __enter__(self):
         return self
 
-    @beartype
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
 
-    @beartype
     def checkpoint(self):
         with self._mem.write_transaction:
             self._mem.perform_checkpoint(reopen_wal=True)
 
-    @beartype
     def insert(self, key: int | str | UUID | datetime, value: bytes, replace=False):
         """Insert a value in the tree.
 
@@ -137,8 +130,9 @@ class BPlusTree:
                 node.insert_entry(record)
                 self._split_leaf(node)
 
-    @beartype
-    def batch_insert(self, iterable: Iterable):
+    def batch_insert(
+        self, iterable: Iterable[tuple[int | str | UUID | datetime, bytes]]
+    ):
         """Insert many elements in the tree at once.
 
         The iterable object must yield tuples (key, value) in ascending order.
@@ -182,9 +176,10 @@ class BPlusTree:
             if node is not None:
                 self._mem.set_node(node)
 
-    @beartype
     def get(
-        self, key: int | str | UUID | datetime, default: bytes | None = None
+        self,
+        key: int | str | UUID | datetime,
+        default: bytes | None = None,
     ) -> bytes | None:
         with self._mem.read_transaction:
             node = self._search_in_tree(key, self._root_node)
@@ -197,17 +192,13 @@ class BPlusTree:
                 assert isinstance(rv, bytes)
                 return rv
 
-    @beartype
     def __contains__(self, item):
         with self._mem.read_transaction:
-            o = object()
-            return self.get(item, default=o) is not o
+            return self.get(item) is not None
 
-    @beartype
     def __setitem__(self, key, value):
         self.insert(key, value, replace=True)
 
-    @beartype
     def __getitem__(self, item):
         with self._mem.read_transaction:
             if isinstance(item, slice):
@@ -222,7 +213,6 @@ class BPlusTree:
 
             return rv
 
-    @beartype
     def __len__(self):
         with self._mem.read_transaction:
             node = self._left_record_node
@@ -233,7 +223,6 @@ class BPlusTree:
                     return rv
                 node = self._mem.get_node(node.next_page)
 
-    @beartype
     def __length_hint__(self):
         with self._mem.read_transaction:
             node = self._root_node
@@ -248,7 +237,6 @@ class BPlusTree:
             num_records_per_leaf_node = int((node.max_children + node.min_children) / 2)
             return num_leaf_nodes * num_records_per_leaf_node
 
-    @beartype
     def __iter__(self, slice_: slice | None = None):
         if not slice_:
             slice_ = slice(None)
@@ -258,7 +246,6 @@ class BPlusTree:
 
     keys = __iter__
 
-    @beartype
     def items(
         self, slice_: slice | None = None
     ) -> Iterator[Tuple[int | str | UUID | datetime, bytes]]:
@@ -268,7 +255,6 @@ class BPlusTree:
             for record in self._iter_slice(slice_):
                 yield record.key, self._get_value_from_record(record)
 
-    @beartype
     def values(self, slice_: slice | None = None) -> Iterator[bytes]:
         if not slice_:
             slice_ = slice(None)
@@ -276,27 +262,23 @@ class BPlusTree:
             for record in self._iter_slice(slice_):
                 yield self._get_value_from_record(record)
 
-    @beartype
     def __bool__(self):
         with self._mem.read_transaction:
             for _ in self:
                 return True
             return False
 
-    @beartype
     def __repr__(self):
         return f"<BPlusTree: {self._filepath} {self._tree_conf}>"
 
     # ####################### Implementation ##############################
 
-    @beartype
     def _initialize_empty_tree(self):
         self._root_node_page = self._mem.next_available_page
         with self._mem.write_transaction:
             self._mem.set_node(self.LonelyRootNode(page=self._root_node_page))
         self._mem.set_metadata(self._root_node_page, self._tree_conf)
 
-    @beartype
     def _create_partials(self):
         self.LonelyRootNode = partial(LonelyRootNode, self._tree_conf)
         self.RootNode = partial(RootNode, self._tree_conf)
@@ -307,21 +289,18 @@ class BPlusTree:
         self.Reference = partial(Reference, self._tree_conf)
 
     @property
-    @beartype
     def _root_node(self) -> LonelyRootNode | RootNode:
         root_node = self._mem.get_node(self._root_node_page)
         assert isinstance(root_node, (LonelyRootNode, RootNode))
         return root_node
 
     @property
-    @beartype
     def _left_record_node(self) -> LonelyRootNode | LeafNode:
         node = self._root_node
         while not isinstance(node, (LonelyRootNode, LeafNode)):
             node = self._mem.get_node(node.smallest_entry.before)
         return node
 
-    @beartype
     def _iter_slice(self, slice_: slice) -> Iterator[Record]:
         if slice_.step is not None:
             raise ValueError("Cannot iterate with a custom step")
@@ -353,7 +332,6 @@ class BPlusTree:
             else:
                 return
 
-    @beartype
     def _search_in_tree(self, key: int | str | UUID | datetime, node: Node) -> Node:
         if isinstance(node, (LonelyRootNode, LeafNode)):
             return node
@@ -378,7 +356,6 @@ class BPlusTree:
         child_node.parent = node
         return self._search_in_tree(key, child_node)
 
-    @beartype
     def _split_leaf(self, old_node: Node):
         """Split a leaf Node to allow the tree to grow."""
         parent = old_node.parent
@@ -405,7 +382,6 @@ class BPlusTree:
         self._mem.set_node(old_node)
         self._mem.set_node(new_node)
 
-    @beartype
     def _split_parent(self, old_node: Node):
         parent = old_node.parent
         new_node = self.InternalNode(page=self._mem.next_available_page)
@@ -430,7 +406,6 @@ class BPlusTree:
         self._mem.set_node(old_node)
         self._mem.set_node(new_node)
 
-    @beartype
     def _create_new_root(self, reference: Reference):
         new_root = self.RootNode(page=self._mem.next_available_page)
         new_root.insert_entry(reference)
@@ -438,7 +413,6 @@ class BPlusTree:
         self._mem.set_metadata(self._root_node_page, self._tree_conf)
         self._mem.set_node(new_root)
 
-    @beartype
     def _create_overflow(self, value: bytes) -> int:
         first_overflow_page = self._mem.next_available_page
         next_overflow_page = first_overflow_page
@@ -456,7 +430,6 @@ class BPlusTree:
 
         return first_overflow_page
 
-    @beartype
     def _traverse_overflow(self, first_overflow_page: int):
         """Yield all Nodes of an overflow chain."""
         next_overflow_page = first_overflow_page
@@ -468,7 +441,6 @@ class BPlusTree:
             if next_overflow_page is None:
                 break
 
-    @beartype
     def _read_from_overflow(self, first_overflow_page: int) -> bytes:
         """Collect all values of an overflow chain."""
         rv = bytearray()
@@ -477,14 +449,12 @@ class BPlusTree:
 
         return bytes(rv)
 
-    @beartype
     def _delete_overflow(self, first_overflow_page: int):
         """Delete all Nodes in an overflow chain."""
         for overflow_node in self._traverse_overflow(first_overflow_page):
             self._mem.del_node(overflow_node)
 
-    @beartype
-    def _get_value_from_recor(self, record: Record) -> bytes:
+    def _get_value_from_record(self, record: Record) -> bytes:
         if record.value is not None:
             return record.value
 
