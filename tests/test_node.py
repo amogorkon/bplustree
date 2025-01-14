@@ -1,33 +1,50 @@
+from __future__ import annotations
 import pytest
 
-from bplustree.const import TreeConf, ENDIAN
-from bplustree.entry import Record, Reference, OpaqueData
-from bplustree.node import (Node, LonelyRootNode, RootNode, InternalNode,
-                            LeafNode, FreelistNode, OverflowNode)
+from bplustree.const import ENDIAN, TreeConf
+from bplustree.entry import OpaqueData, Record, Reference
+from bplustree.node import (
+    FreelistNode,
+    InternalNode,
+    LeafNode,
+    LonelyRootNode,
+    Node,
+    OverflowNode,
+    RootNode,
+)
 from bplustree.serializer import IntSerializer
 
 tree_conf = TreeConf(4096, 7, 16, 16, IntSerializer())
 
 
-@pytest.mark.parametrize('klass,order,min_children,max_children', [
-    (LonelyRootNode, 7, 0, 6),
-    (LonelyRootNode, 100, 0, 99),
-    (RootNode, 7, 2, 7),
-    (RootNode, 100, 2, 100),
-    (InternalNode, 7, 4, 7),
-    (InternalNode, 100, 50, 100),
-    (LeafNode, 7, 3, 6),
-    (LeafNode, 100, 49, 99),
-])
+@pytest.mark.parametrize(
+    "klass,order,min_children,max_children",
+    [
+        (LonelyRootNode, 7, 0, 6),
+        (LonelyRootNode, 100, 0, 99),
+        (RootNode, 7, 2, 7),
+        (RootNode, 100, 2, 100),
+        (InternalNode, 7, 4, 7),
+        (InternalNode, 100, 50, 100),
+        (LeafNode, 7, 3, 6),
+        (LeafNode, 100, 49, 99),
+    ],
+)
 def test_node_limit_children(klass, order, min_children, max_children):
     node = klass(TreeConf(4096, order, 16, 16, IntSerializer()))
     assert node.min_children == min_children
     assert node.max_children == max_children
 
 
-@pytest.mark.parametrize('klass', [
-    LeafNode, InternalNode, RootNode, LonelyRootNode,
-])
+@pytest.mark.parametrize(
+    "klass",
+    [
+        LeafNode,
+        InternalNode,
+        RootNode,
+        LonelyRootNode,
+    ],
+)
 def test_empty_node_serialization(klass):
     n1 = klass(tree_conf)
     data = n1.dump()
@@ -42,10 +59,9 @@ def test_empty_node_serialization(klass):
 
 def test_leaf_node_serialization():
     n1 = LeafNode(tree_conf, next_page=66)
-    n1.insert_entry(Record(tree_conf, 43, b'43'))
-    n1.insert_entry(Record(tree_conf, 42, b'42'))
-    assert n1.entries == [Record(tree_conf, 42, b'42'),
-                          Record(tree_conf, 43, b'43')]
+    n1.insert_entry(Record(tree_conf, 43, b"43"))
+    n1.insert_entry(Record(tree_conf, 42, b"42"))
+    assert n1.entries == [Record(tree_conf, 42, b"42"), Record(tree_conf, 43, b"43")]
     data = n1.dump()
 
     n2 = LeafNode(tree_conf, data=data)
@@ -65,8 +81,10 @@ def test_root_node_serialization():
     n1 = RootNode(tree_conf)
     n1.insert_entry(Reference(tree_conf, 43, 2, 3))
     n1.insert_entry(Reference(tree_conf, 42, 1, 2))
-    assert n1.entries == [Reference(tree_conf, 42, 1, 2),
-                          Reference(tree_conf, 43, 2, 3)]
+    assert n1.entries == [
+        Reference(tree_conf, 42, 1, 2),
+        Reference(tree_conf, 43, 2, 3),
+    ]
     data = n1.dump()
 
     n2 = RootNode(tree_conf, data=data)
@@ -83,10 +101,7 @@ def test_node_slots():
 def test_get_node_from_page_data():
     data = (2).to_bytes(1, ENDIAN) + bytes(4096 - 1)
     tree_conf = TreeConf(4096, 7, 16, 16, IntSerializer())
-    assert isinstance(
-        Node.from_page_data(tree_conf, data, 4),
-        RootNode
-    )
+    assert isinstance(Node.from_page_data(tree_conf, data, 4), RootNode)
 
 
 def test_insert_find_get_remove_entries():
@@ -160,7 +175,7 @@ def test_freelist_node_serialization_no_next_page():
 
 def test_overflow_node_serialization():
     n1 = OverflowNode(tree_conf, next_page=3)
-    n1.insert_entry_at_the_end(OpaqueData(data=b'foo'))
+    n1.insert_entry_at_the_end(OpaqueData(data=b"foo"))
     data = n1.dump()
 
     n2 = OverflowNode(tree_conf, data=data)
@@ -169,7 +184,7 @@ def test_overflow_node_serialization():
 
 def test_overflow_node_serialization_no_next_page():
     n1 = OverflowNode(tree_conf, next_page=None)
-    n1.insert_entry_at_the_end(OpaqueData(data=b'foo'))
+    n1.insert_entry_at_the_end(OpaqueData(data=b"foo"))
     data = n1.dump()
 
     n2 = OverflowNode(tree_conf, data=data)

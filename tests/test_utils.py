@@ -14,15 +14,15 @@ def test_pairwise():
 
 
 def test_iter_slice():
-    i = iter_slice(b'12345678', 3)
-    assert next(i) == (b'123', False)
-    assert next(i) == (b'456', False)
-    assert next(i) == (b'78', True)
+    i = iter_slice(b"12345678", 3)
+    assert next(i) == (b"123", False)
+    assert next(i) == (b"456", False)
+    assert next(i) == (b"78", True)
     with pytest.raises(StopIteration):
         next(i)
 
-    i = iter_slice(b'123456', 3)
-    assert next(i) == (b'123', False)
-    assert next(i) == (b'456', True)
+    i = iter_slice(b"123456", 3)
+    assert next(i) == (b"123", False)
+    assert next(i) == (b"456", True)
     with pytest.raises(StopIteration):
         next(i)
