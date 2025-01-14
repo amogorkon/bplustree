@@ -1,3 +1,4 @@
+import contextlib
 import uuid
 from pathlib import Path
 from typing import Generator
@@ -17,13 +18,15 @@ def clean_file(tmp_path) -> Generator[Path, None, None]:
 
     yield unique_index_path
 
-    if unique_index_path.is_file():
-        unique_index_path.unlink()
-    if wal_path.is_file():
-        wal_path.unlink()
-
+    # Ensure the file is closed before attempting to delete it
+    with contextlib.suppress(PermissionError):
+        if unique_index_path.is_file():
+            unique_index_path.unlink()
+        if wal_path.is_file():
+            wal_path.unlink()
     for file in tmp_path.glob("bplustree-testfile-*.index*"):
-        file.unlink()
+        with contextlib.suppress(PermissionError):
+            file.unlink()
 
 
 @pytest.fixture(autouse=True)
